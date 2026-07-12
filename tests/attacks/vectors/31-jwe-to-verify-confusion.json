@@ -1,0 +1,12 @@
+{
+	"name": "JWE handed to the verification path",
+	"description": "A well-formed five-segment JWE presented to jwtVerify. The mirror image of vector 30: an encrypted token can never come out of the signed-token door.",
+	"attacks": "JWS/JWE format confusion",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.12",
+	"relatedRequirements": ["LW-enc.4"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"target": "verify",
+	"profile": "hmac",
+	"recipe": { "kind": "jweEncrypted" }
+}

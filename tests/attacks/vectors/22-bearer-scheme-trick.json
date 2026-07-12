@@ -1,0 +1,11 @@
+{
+	"name": "Authorization header with a lowercase scheme and double space",
+	"description": "Casing and whitespace tricks ('bearer  token') that loose parsers normalize away. The strict parser matches the exact 'Bearer <token68>' grammar and rejects this.",
+	"attacks": "parser confusion",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc6750#section-2.1",
+	"relatedRequirements": ["LW-http.2"],
+	"expectedError": "BearerParseFailed",
+	"expectedCode": "BEARER_PARSE_FAILED",
+	"target": "bearer",
+	"recipe": { "kind": "bearer", "header": "bearer  aaaaaaaaaaaabbbbbbbbbbbb" }
+}

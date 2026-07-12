@@ -1,0 +1,11 @@
+{
+	"name": "All-zero ECDSA signature (psychic signature)",
+	"description": "An ES256 token whose signature is 64 zero bytes (r=0, s=0). Implementations that skip the r,s range check accept it against any key. Lacewing (via WebCrypto/jose) rejects the degenerate signature.",
+	"attacks": "signature forgery",
+	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2022-21449",
+	"relatedRequirements": ["8725-3.4.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "es256",
+	"recipe": { "kind": "unsigned", "header": { "alg": "ES256", "typ": "at+jwt" }, "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }
+}

@@ -1,0 +1,13 @@
+{
+	"name": "python-cryptography-produced Ed25519 token that meets policy - verifies",
+	"source": "pyca/cryptography Ed25519PrivateKey.sign (no jose involved)",
+	"description": "A policy-compliant EdDSA token signed by pyca/cryptography over the exact signing input, verified against the raw public key as an OKP JWK. Asymmetric counterpart of the OpenSSL HS256 vector. Clock pinned to 2026-01-01T00:00:00Z.",
+	"format": "jws",
+	"clockAt": 1767225660,
+	"token": "eyJhbGciOiJFZERTQSIsInR5cCI6ImF0K2p3dCJ9.eyJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20iLCJhdWQiOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSIsInN1YiI6InVzZXItNDIiLCJqdGkiOiJnb2xkZW4tZWQyNTUxOS0xIiwiaWF0IjoxNzY3MjI1NjAwLCJleHAiOjE3NjcyMjU5MDB9.OFOQQp0UNWXf8gYHqCNfoLaWFSSgJxMhdTcjD73hZAIIdUSGl65w9XyuFNKC4_Pibrt31vpgZ8IASKxHqx_rAw",
+	"key": { "kty": "OKP", "crv": "Ed25519", "x": "ANBaHR6iUTltVXr71FiLPG2Z2-uXL-0QoyVi6ibc3Po" },
+	"keyAlg": "EdDSA",
+	"profile": { "typ": "at+jwt", "issuer": "https://auth.example.com", "audience": "https://api.example.com", "algorithms": ["EdDSA"], "maxTokenAge": "15m" },
+	"relatedRequirements": ["8725-3.1.1"],
+	"expect": { "outcome": "accept", "claims": { "sub": "user-42", "jti": "golden-ed25519-1" } }
+}

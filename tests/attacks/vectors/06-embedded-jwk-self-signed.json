@@ -1,0 +1,11 @@
+{
+	"name": "Embedded jwk header, self-signed token",
+	"description": "The token carries its own verification key in a 'jwk' header, inviting the verifier to trust a key the attacker chose. Lacewing never honors key-bearing headers and rejects the token.",
+	"attacks": "key substitution",
+	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2018-0114",
+	"relatedRequirements": ["8725-3.10.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "jwk": { "kty": "oct", "k": "AAAA" } } }
+}

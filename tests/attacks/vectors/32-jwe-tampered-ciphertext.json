@@ -1,0 +1,11 @@
+{
+	"name": "JWE tampered ciphertext",
+	"description": "A valid encryption under the profile's key with one ciphertext byte flipped. AEAD authentication must fail and surface as a typed error, with no plaintext ever escaping.",
+	"attacks": "ciphertext malleability / integrity bypass",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.3",
+	"relatedRequirements": ["8725-3.3.1", "LW-enc.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"target": "decrypt",
+	"recipe": { "kind": "jweEncrypted", "tamper": "ciphertext" }
+}

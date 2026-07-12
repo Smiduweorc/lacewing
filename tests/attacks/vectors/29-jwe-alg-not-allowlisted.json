@@ -1,0 +1,11 @@
+{
+	"name": "JWE alg outside the profile allowlist",
+	"description": "A header claiming A256KW key management against a profile that allowlists only dir. Registry membership is not enough - the profile's explicit allowlist decides, and it says no before any unwrap is attempted.",
+	"attacks": "key-management confusion / algorithm substitution",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.1",
+	"relatedRequirements": ["8725-3.1.1", "LW-enc.2"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"target": "decrypt",
+	"recipe": { "kind": "jweCrafted", "header": { "alg": "A256KW", "enc": "A256GCM", "typ": "at+jwt" } }
+}

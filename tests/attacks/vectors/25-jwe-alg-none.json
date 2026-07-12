@@ -1,0 +1,11 @@
+{
+	"name": "JWE alg: none",
+	"description": "A five-segment token whose header claims key-management algorithm 'none'. The unrepresentable-none rule applies to JWE exactly as to JWS: rejected before any crypto segment is touched.",
+	"attacks": "signature/encryption bypass via alg: none (JWE flavor)",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.2",
+	"relatedRequirements": ["8725-3.2.2", "LW-enc.1"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"target": "decrypt",
+	"recipe": { "kind": "jweCrafted", "header": { "alg": "none", "enc": "A256GCM", "typ": "at+jwt" } }
+}

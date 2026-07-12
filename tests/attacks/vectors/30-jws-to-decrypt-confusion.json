@@ -1,0 +1,11 @@
+{
+	"name": "JWS handed to the decryption path",
+	"description": "A well-formed, correctly signed three-segment JWS presented to jwtDecrypt. Format confusion between the two compact serializations must fail structurally - a signed token can never come out of the decryption door.",
+	"attacks": "JWS/JWE format confusion",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.12",
+	"relatedRequirements": ["LW-enc.4"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"target": "decrypt",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" } }
+}

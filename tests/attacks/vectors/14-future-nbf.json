@@ -1,0 +1,11 @@
+{
+	"name": "Not-yet-valid token (future nbf)",
+	"description": "A token whose nbf is ten minutes in the future, well beyond any sane clock skew. Rejected as not yet valid.",
+	"attacks": "replay / premature use",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.9",
+	"relatedRequirements": ["8725-3.9.1"],
+	"expectedError": "JWTClaimValidationFailed",
+	"expectedCode": "JWT_CLAIM_VALIDATION_FAILED",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" }, "nowClaims": { "nbf": 600 } }
+}

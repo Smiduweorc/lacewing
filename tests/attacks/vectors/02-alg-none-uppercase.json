@@ -1,0 +1,11 @@
+{
+	"name": "alg: NONE (uppercase casing trick)",
+	"description": "Case-manipulation variant that bypasses naive case-sensitive 'none' checks. Lacewing lowercases before comparing and refuses it.",
+	"attacks": "signature bypass",
+	"reference": "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
+	"relatedRequirements": ["8725-3.2.2"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"profile": "hmac",
+	"recipe": { "kind": "unsigned", "header": { "alg": "NONE", "typ": "at+jwt" }, "signature": "AA" }
+}

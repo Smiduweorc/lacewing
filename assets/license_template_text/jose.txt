@@ -1,0 +1,5 @@
+/*
+ * Portions of this code are copied or adapted from the 'jose' library.
+ * Copyright (c) Filip Skokan (panva)
+ * Licensed under the MIT License.
+ */

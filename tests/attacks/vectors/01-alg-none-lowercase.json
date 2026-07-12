@@ -1,0 +1,11 @@
+{
+	"name": "alg: none (lowercase)",
+	"description": "The classic signature-stripping attack: set the algorithm to 'none' and drop the signature. Lacewing has no 'none' in its registry, so the header is refused before any key is touched.",
+	"attacks": "signature bypass",
+	"reference": "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
+	"relatedRequirements": ["8725-3.2.2"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"profile": "hmac",
+	"recipe": { "kind": "unsigned", "header": { "alg": "none", "typ": "at+jwt" }, "signature": "AA" }
+}

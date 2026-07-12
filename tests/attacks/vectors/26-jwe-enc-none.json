@@ -1,0 +1,11 @@
+{
+	"name": "JWE enc: none",
+	"description": "A five-segment token whose header claims content-encryption algorithm 'none' - asking the recipient to treat the ciphertext as plaintext. Rejected at header validation.",
+	"attacks": "confidentiality bypass via enc: none",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.2",
+	"relatedRequirements": ["8725-3.2.2", "LW-enc.1"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"target": "decrypt",
+	"recipe": { "kind": "jweCrafted", "header": { "alg": "dir", "enc": "none", "typ": "at+jwt" } }
+}

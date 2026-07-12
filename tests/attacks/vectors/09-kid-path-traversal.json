@@ -1,0 +1,11 @@
+{
+	"name": "kid path traversal",
+	"description": "A 'kid' crafted to escape a key directory ('../../etc/passwd'). Lacewing charset-restricts and length-caps kid before any lookup, so traversal characters fail sanitization.",
+	"attacks": "path traversal / file disclosure",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.10",
+	"relatedRequirements": ["8725-3.10.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "kid": "../../etc/passwd" } }
+}

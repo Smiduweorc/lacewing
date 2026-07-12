@@ -1,0 +1,11 @@
+{
+	"name": "zip: DEF decompression header",
+	"description": "A 'zip' header asking the verifier to inflate the payload - the setup for a decompression bomb. Lacewing supports no compression and rejects the header.",
+	"attacks": "decompression bomb / denial of service",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.6",
+	"relatedRequirements": ["8725-3.6.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "zip": "DEF" } }
+}

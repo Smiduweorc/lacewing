@@ -1,0 +1,12 @@
+{
+	"$comment": "Compiles ONLY the negative fixtures. This project is EXPECTED TO FAIL: every file under fixtures/ contains an assignment that must be rejected. tests/types/negative.test.ts runs tsc with this config and asserts each fixture still produces an error.",
+	"extends": "../../tsconfig.json",
+	"compilerOptions": {
+		"noEmit": true,
+		"noUnusedLocals": false,
+		"rootDir": "../../"
+	},
+	"include": ["./fixtures/**/*.ts", "../../index.ts", "../../src/**/*.ts"],
+	"$comment2": "The root config excludes `tests`, and an inherited `exclude` would filter the fixtures right back out - so it is overridden here.",
+	"exclude": ["../../node_modules", "../../dist"]
+}

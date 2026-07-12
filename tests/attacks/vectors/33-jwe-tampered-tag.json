@@ -1,0 +1,11 @@
+{
+	"name": "JWE tampered authentication tag",
+	"description": "A valid encryption under the profile's key with one authentication-tag byte flipped. The tag is the integrity proof itself; forging it must be exactly as hard as breaking the AEAD.",
+	"attacks": "authentication-tag forgery",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.3",
+	"relatedRequirements": ["8725-3.3.1", "LW-enc.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"target": "decrypt",
+	"recipe": { "kind": "jweEncrypted", "tamper": "tag" }
+}

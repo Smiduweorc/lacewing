@@ -1,0 +1,11 @@
+{
+	"name": "jku pointing at an attacker URL",
+	"description": "A 'jku' header tells naive verifiers to fetch the signing key from a URL the attacker controls (SSRF and key substitution in one). Lacewing never follows jku/x5u and rejects the header outright.",
+	"attacks": "SSRF / key substitution",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.10",
+	"relatedRequirements": ["8725-3.10.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "jku": "https://attacker.example.com/jwks" } }
+}

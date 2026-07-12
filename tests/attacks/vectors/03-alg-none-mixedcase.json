@@ -1,0 +1,11 @@
+{
+	"name": "alg: nOnE (mixed casing trick)",
+	"description": "Mixed-case variant of the 'none' bypass.",
+	"attacks": "signature bypass",
+	"reference": "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
+	"relatedRequirements": ["8725-3.2.2"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"profile": "hmac",
+	"recipe": { "kind": "unsigned", "header": { "alg": "nOnE", "typ": "at+jwt" }, "signature": "AA" }
+}

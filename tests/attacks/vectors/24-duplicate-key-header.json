@@ -1,0 +1,15 @@
+{
+	"name": "Duplicate alg in the header JSON",
+	"description": "Two 'alg' members in the header: an allowlisted one first, 'none' second. A last-wins parser would see 'none'; Lacewing rejects the duplicate before any key lookup.",
+	"attacks": "parser differential / signature bypass",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8259#section-4",
+	"relatedRequirements": ["8725-3.7.1", "8725-3.2.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": {
+		"kind": "hmacRaw",
+		"headerJson": "{\"alg\":\"HS256\",\"alg\":\"none\",\"typ\":\"at+jwt\"}",
+		"payloadJson": "{\"iss\":\"https://auth.example.com\",\"aud\":\"https://api.example.com\",\"sub\":\"user-42\",\"jti\":\"j1\",\"iat\":1000000000,\"exp\":9999999999}"
+	}
+}

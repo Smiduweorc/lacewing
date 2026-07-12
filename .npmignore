@@ -1,0 +1,33 @@
+# The published package is dist/ plus README, LICENSE, NOTICE.md and
+# CHANGELOG.md. Everything below is build input or dev tooling.
+# (node_modules, .git, package-lock.json etc. are excluded by npm itself.)
+
+# Source and build inputs; dist/ ships the compiled output
+/src/
+/index.ts
+/tsconfig.json
+
+# Tests, tooling, and working notes
+/tests/
+/tools/
+/examples/
+/internal/
+/release.sh
+/eslint.config.mjs
+/commitlint.config.js
+/lefthook.yml
+/cliff.toml
+/typedoc.json
+/.nvmrc
+
+# Generated: docs/ is published via GitHub Pages, the compliance files by CI
+/docs/
+/compliance-report.md
+/compliance-tap.txt
+
+# Referenced from the repository (README logo), not needed in the tarball
+/assets/
+
+# CI and editor config
+/.github/
+/.vscode/

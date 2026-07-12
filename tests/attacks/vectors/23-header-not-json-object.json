@@ -1,0 +1,15 @@
+{
+	"name": "Header is a JSON array, not an object",
+	"description": "A validly-signed token whose header segment decodes to a JSON array. A JWT header must be an object; Lacewing rejects the non-object shape during strict parsing.",
+	"attacks": "parser differential",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc7515#section-4",
+	"relatedRequirements": ["8725-3.7.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": {
+		"kind": "hmacRaw",
+		"headerJson": "[\"HS256\",\"at+jwt\"]",
+		"payloadJson": "{\"iss\":\"https://auth.example.com\",\"aud\":\"https://api.example.com\",\"sub\":\"user-42\",\"jti\":\"j1\",\"iat\":1000000000,\"exp\":9999999999}"
+	}
+}

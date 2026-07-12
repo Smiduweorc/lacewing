@@ -1,0 +1,11 @@
+{
+	"name": "Refresh token presented to an access-token profile",
+	"description": "A validly-signed token whose typ is 'rt+jwt' presented where 'at+jwt' is expected. Token-kind confusion is refused on typ (RFC 8725 §3.12).",
+	"attacks": "token-kind confusion",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.12",
+	"relatedRequirements": ["8725-3.12.1"],
+	"expectedError": "JWTClaimValidationFailed",
+	"expectedCode": "JWT_CLAIM_VALIDATION_FAILED",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "rt+jwt" } }
+}

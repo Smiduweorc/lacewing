@@ -1,0 +1,13 @@
+{
+	"name": "RFC 7516 A.3 - A128KW worked example is rejected (no typ)",
+	"source": "https://datatracker.ietf.org/doc/html/rfc7516#appendix-A.3",
+	"description": "The deterministic A128KW + A128CBC-HS256 example ('Live long and prosper.'), byte-for-byte from the RFC, with the RFC's key. Both algorithms are in the profile's allowlists, but the header carries no typ - explicit typing is mandatory, so it is rejected before decryption.",
+	"format": "jwe",
+	"clockAt": 1431000000,
+	"token": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0.6KB707dM9YTIgHtLvtgWQ8mKwboJW3of9locizkDTHzBC2IlrT1oOQ.AxY8DCtDaGlsbGljb3RoZQ.KDlTtXchhZTGufMYmOYGS4HffxPSUrfmqCHXaI9wOGY.U0m_YmjN04DJvceFICbCVQ",
+	"key": { "kty": "oct", "k": "GawgguFyGrWKav7AX4VKUg" },
+	"keyAlg": "A128KW",
+	"profile": { "typ": "JWT", "issuer": "joe", "audience": "https://api.example.com", "keyManagementAlgorithms": ["A128KW"], "contentEncryptionAlgorithms": ["A128CBC-HS256"], "maxTokenAge": "3650d" },
+	"relatedRequirements": ["LW-enc.3"],
+	"expect": { "outcome": "reject", "error": "JWTInvalid", "code": "JWT_INVALID" }
+}

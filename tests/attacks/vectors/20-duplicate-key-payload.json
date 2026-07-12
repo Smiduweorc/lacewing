@@ -1,0 +1,15 @@
+{
+	"name": "Duplicate aud in the payload JSON",
+	"description": "A validly-signed payload with two 'aud' members - one legitimate, one hostile. JSON.parse keeps the last; Lacewing's strict scan rejects the duplicate, closing the parser differential.",
+	"attacks": "parser differential",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8259#section-4",
+	"relatedRequirements": ["8725-3.7.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": {
+		"kind": "hmacRaw",
+		"headerJson": "{\"alg\":\"HS256\",\"typ\":\"at+jwt\"}",
+		"payloadJson": "{\"iss\":\"https://auth.example.com\",\"aud\":\"https://api.example.com\",\"aud\":\"https://evil.example.com\",\"sub\":\"user-42\",\"jti\":\"j1\",\"iat\":1000000000,\"exp\":9999999999}"
+	}
+}

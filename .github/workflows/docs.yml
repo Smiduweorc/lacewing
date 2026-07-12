@@ -1,0 +1,79 @@
+# Publishes the TypeDoc API reference to GitHub Pages.
+#
+# One-time setup (repository owner): Settings -> Pages -> Build and deployment ->
+# Source = "GitHub Actions". Without that, the deploy step has nowhere to
+# publish to.
+#
+# Note on action versions: this repo forward-pins the shared actions
+# (checkout@v7, setup-node@v6), which are reused below. The three Pages actions
+# use their canonical stable majors - bump them to match whatever the org pins
+# if the runner cannot resolve these.
+name: Docs
+
+on:
+  push:
+    branches: [master]
+    # Rebuild only when something that affects the generated docs changes.
+    paths:
+      - "src/**"
+      - "index.ts"
+      - "README.md"
+      - "typedoc.json"
+      - "tsconfig.json"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+# Least privilege: read the repo, write Pages, and mint the OIDC token the
+# deploy step needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent Pages deployment; don't cancel an in-flight one (a
+# half-finished deploy is worse than a slightly stale one).
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build TypeDoc site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build API docs
+        run: npm run docs
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload docs artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

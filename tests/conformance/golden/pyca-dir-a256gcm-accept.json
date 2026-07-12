@@ -1,0 +1,13 @@
+{
+	"name": "python-cryptography-produced dir/A256GCM JWE that meets policy - decrypts",
+	"source": "pyca/cryptography AESGCM over the compact-JWE construction (no jose involved)",
+	"description": "A policy-compliant encrypted JWT assembled by hand from RFC 7516's compact construction: protected header as AAD, empty encrypted-key segment (dir), AES-256-GCM ciphertext and tag from pyca/cryptography. Proves Lacewing decrypts JWEs produced with zero shared code. Clock pinned to 2026-01-01T00:00:00Z.",
+	"format": "jwe",
+	"clockAt": 1767225660,
+	"token": "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwidHlwIjoiYXQrand0In0..AQIDBAUGBwgJCgsM.bdHiT7GuqmqaUn1NqL_wq2fuwY7nP1OIcJfggzEHJs2kkTvmYkq-0MpLQSTInBexo8LoFwAvSh7BGExrljfL3_t92fujmseW0FKTLKrzoAfSh6hp5ybh8oSPOUATM-auSVXB9Gi2luIgGDY6--ZneYc6YvuNp2dEzemadbaIHnpAs3C8K_bOe0w.LxLVM5zPAQsVGmTpNyHD5A",
+	"key": { "kty": "oct", "k": "yMnKy8zNzs_Q0dLT1NXW19jZ2tvc3d7f4OHi4-Tl5uc" },
+	"keyAlg": "dir",
+	"profile": { "typ": "at+jwt", "issuer": "https://auth.example.com", "audience": "https://api.example.com", "keyManagementAlgorithms": ["dir"], "contentEncryptionAlgorithms": ["A256GCM"], "maxTokenAge": "15m" },
+	"relatedRequirements": ["LW-enc.2"],
+	"expect": { "outcome": "accept", "claims": { "sub": "user-42", "jti": "golden-jwe-1" } }
+}

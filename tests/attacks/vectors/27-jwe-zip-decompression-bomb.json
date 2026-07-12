@@ -1,0 +1,11 @@
+{
+	"name": "JWE zip: DEF decompression header",
+	"description": "A 'zip' header on an encrypted token - the JWE flavor of the decompression bomb, and the nastier one: the inflation would happen on attacker-controlled ciphertext. Lacewing rejects the header outright, before decryption.",
+	"attacks": "decompression bomb / denial of service",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.6",
+	"relatedRequirements": ["8725-3.6.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"target": "decrypt",
+	"recipe": { "kind": "jweCrafted", "header": { "alg": "dir", "enc": "A256GCM", "typ": "at+jwt", "zip": "DEF" } }
+}

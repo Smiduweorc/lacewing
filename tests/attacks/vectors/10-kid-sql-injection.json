@@ -1,0 +1,11 @@
+{
+	"name": "kid SQL injection",
+	"description": "A 'kid' carrying a SQL payload, aimed at verifiers that look keys up in a database by interpolating kid. The conservative charset rejects the quote and semicolon.",
+	"attacks": "SQL injection",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.10",
+	"relatedRequirements": ["8725-3.10.1"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "kid": "k'; DROP TABLE keys;--" } }
+}

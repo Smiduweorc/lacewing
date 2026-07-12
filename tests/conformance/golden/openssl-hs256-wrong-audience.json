@@ -1,0 +1,13 @@
+{
+	"name": "OpenSSL-produced HS256 token with the wrong audience - rejected",
+	"source": "openssl dgst -sha256 -mac HMAC (OpenSSL 3.6, no jose involved)",
+	"description": "Identical construction to the accepting OpenSSL vector - same key, valid signature, pinned timestamps - but aud names a different service. Cross-service replay must fail on claims, not on crypto.",
+	"format": "jws",
+	"clockAt": 1767225660,
+	"token": "eyJhbGciOiJIUzI1NiIsInR5cCI6ImF0K2p3dCJ9.eyJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20iLCJhdWQiOiJodHRwczovL2V2aWwuZXhhbXBsZS5jb20iLCJzdWIiOiJ1c2VyLTQyIiwianRpIjoiZ29sZGVuLWhzMjU2LTIiLCJpYXQiOjE3NjcyMjU2MDAsImV4cCI6MTc2NzIyNTkwMH0.vAic-upDHvBuGoiayZele9hv7ybDnwcvtKn4iXTNs_0",
+	"key": { "kty": "oct", "k": "ZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXp7fH1-f4CBgoM" },
+	"keyAlg": "HS256",
+	"profile": { "typ": "at+jwt", "issuer": "https://auth.example.com", "audience": "https://api.example.com", "algorithms": ["HS256"], "maxTokenAge": "15m" },
+	"relatedRequirements": ["8725-3.9.1"],
+	"expect": { "outcome": "reject", "error": "JWTClaimValidationFailed", "code": "JWT_CLAIM_VALIDATION_FAILED" }
+}

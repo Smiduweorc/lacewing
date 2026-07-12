@@ -1,0 +1,11 @@
+{
+	"name": "Untrusted issuer",
+	"description": "A validly-signed token from a different tenant/issuer than the profile trusts. Cross-service replay is refused on iss.",
+	"attacks": "cross-service replay",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.8",
+	"relatedRequirements": ["8725-3.8.1"],
+	"expectedError": "JWTClaimValidationFailed",
+	"expectedCode": "JWT_CLAIM_VALIDATION_FAILED",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" }, "claims": { "iss": "https://other-tenant.example.com" } }
+}

@@ -1,0 +1,1 @@
+This project includes code adapted from the [jose](https://github.com/panva/jose) repository, created by Panva. We are grateful for their work!

@@ -1,0 +1,11 @@
+{
+	"name": "RS256 to HS256 key confusion",
+	"description": "The attacker takes an asymmetric (EdDSA/RSA) profile's public key and uses it as an HMAC secret, hoping the verifier will HMAC-verify with a key everyone can see. Lacewing's profile allowlist is asymmetric-only, so the HS256 header is refused before any key is consulted.",
+	"attacks": "algorithm confusion / signature forgery",
+	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2016-5431",
+	"relatedRequirements": ["8725-3.1.1", "8725-3.1.2"],
+	"expectedError": "AlgorithmNotAllowed",
+	"expectedCode": "ALGORITHM_NOT_ALLOWED",
+	"profile": "eddsa",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" } }
+}

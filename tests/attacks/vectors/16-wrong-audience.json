@@ -1,0 +1,11 @@
+{
+	"name": "Mismatched audience",
+	"description": "A token minted for a different API than the one verifying it. Rejected on aud, so a token for service A cannot be replayed against service B.",
+	"attacks": "cross-service replay",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.9",
+	"relatedRequirements": ["8725-3.9.1"],
+	"expectedError": "JWTClaimValidationFailed",
+	"expectedCode": "JWT_CLAIM_VALIDATION_FAILED",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" }, "claims": { "aud": "https://other-api.example.com" } }
+}

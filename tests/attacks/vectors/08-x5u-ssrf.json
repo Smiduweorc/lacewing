@@ -1,0 +1,11 @@
+{
+	"name": "x5u pointing at an attacker URL",
+	"description": "The X.509 sibling of the jku attack: fetch a certificate (and its key) from an attacker URL. Never followed.",
+	"attacks": "SSRF / key substitution",
+	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.10",
+	"relatedRequirements": ["8725-3.10.2"],
+	"expectedError": "JWTInvalid",
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt", "x5u": "https://attacker.example.com/cert.pem" } }
+}
