@@ -3,15 +3,15 @@
 
 **Lacewing is an opinionated JWT library that makes common JWT security mistakes impossible by construction.**
 
-Instead of exposing low-level primitives and trusting you to compose them correctly, Lacewing provides secure verification profiles, safe defaults, mandatory claim validation, built-in revocation support, secure cookie helpers, and a curated algorithm set - everything [RFC 8725 (JWT Best Current Practices)](https://datatracker.ietf.org/doc/html/rfc8725) says an application MUST or SHOULD do is enforced by the type system, enforced at runtime, or impossible to express.
+Instead of exposing low-level primitives and trusting you to compose them correctly, Lacewing provides secure verification profiles, safe defaults, mandatory claim validation, built-in revocation support, secure cookie helpers, and a curated algorithm set. Everything [RFC 8725 (JWT Best Current Practices)](https://datatracker.ietf.org/doc/html/rfc8725) says an application MUST or SHOULD do is enforced by the type system, enforced at runtime, or impossible to express.
 
 **Batteries loaded (RFC 8725).** Out of the box:
 
-- **Verification profiles** - the only way to verify; `typ`, issuer, audience, algorithm allowlist and key source are structurally mandatory
+- **Verification profiles**: the only way to verify; `typ`, issuer, audience, algorithm allowlist and key source are structurally mandatory
 - **Remote JWKS** with caching, rotation handling, and `kid` hygiene
-- **Token revocation** - unique `jti` on every token, pluggable `RevocationStore`, in-memory store included
-- **Secure cookie + bearer helpers** - `HttpOnly; Secure; SameSite` enforced, strict RFC 6750 parsing
-- **Access/refresh token presets** - mutually exclusive by `typ`, shipped rather than left as homework
+- **Token revocation**: unique `jti` on every token, pluggable `RevocationStore`, in-memory store included
+- **Secure cookie + bearer helpers**: `HttpOnly; Secure; SameSite` enforced, strict RFC 6750 parsing
+- **Access/refresh token presets**: mutually exclusive by `typ`, shipped rather than left as homework
 - **Encrypted JWTs (JWE)** with the same profile discipline
 - **Payload hygiene scanning** at sign time (passwords, card numbers, PEM keys never leave in plaintext)
 - **Typed errors** with machine-readable codes and no attacker-facing oracle
@@ -30,7 +30,7 @@ npm install lacewing
 
 ## Quick start
 
-The complete lifecycle - generate a key, sign, define a profile once, verify everywhere:
+The complete lifecycle (generate a key, sign, define a profile once, verify everywhere):
 
 ```ts
 import { SignJWT, defineProfile, jwtVerify, generateKeyPair } from "lacewing";
@@ -53,16 +53,16 @@ const profile = defineProfile({
 	maxTokenAge: "10m",
 });
 
-const { payload } = await jwtVerify(token, profile); // VerifiedJwt - every check passed
+const { payload } = await jwtVerify(token, profile); // VerifiedJwt: every check passed
 ```
 
 A runnable version of everything in this README ships with the repo: `npm run demo`.
 
 ## Concepts
 
-**Profiles are the central abstraction.** Configuration is something you create once - not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a typed error (`JWTExpired`, `AlgorithmNotAllowed`, `JWTClaimValidationFailed`, ...) and no partial result.
+**Profiles are the central abstraction.** Configuration is something you create once, not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a typed error (`JWTExpired`, `AlgorithmNotAllowed`, `JWTClaimValidationFailed`, ...) and no partial result.
 
-**Built on jose.** Lacewing does not reimplement cryptography. It is a hardened policy layer over [jose](https://github.com/panva/jose) - the audited, maintained, runtime-portable JOSE implementation - so the novel code is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs that jose (and any other conforming implementation) can consume, and the conformance suite proves it against the RFC 7515/7516/7519 worked examples plus tokens produced by OpenSSL and python-cryptography.
+**Built on jose.** Lacewing does not reimplement cryptography. It is a hardened policy layer over [jose](https://github.com/panva/jose) (the audited, maintained, runtime-portable JOSE implementation), so the novel code is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs that jose (and any other conforming implementation) can consume, and the conformance suite proves it against the RFC 7515/7516/7519 worked examples plus tokens produced by OpenSSL and python-cryptography.
 
 ## Usage
 
@@ -82,8 +82,56 @@ const accessToken = defineProfile({
 	maxTokenAge: "10m",
 });
 
-const { payload } = await jwtVerify(token, accessToken); // VerifiedJwt - every check passed
+const { payload } = await jwtVerify(token, accessToken); // VerifiedJwt: every check passed
 ```
+
+### Verify: keys you already have
+
+Not everyone has a JWKS endpoint to point at. If the issuer handed you a raw
+public key, or you're pinning a single known one, the same `keys` field takes it
+directly. No URL, no fetch. `importKey` reads a PEM (SPKI public key), a JWK, or
+a `CryptoKey`, and binds it to exactly one algorithm:
+
+```ts
+import { defineProfile, importKey } from "lacewing";
+
+const publicKey = await importKey(spkiPem, "ES256"); // PEM string, JWK, or CryptoKey
+
+const profile = defineProfile({
+	typ: "at+jwt",
+	issuer: "https://auth.example.com",
+	audience: "https://api.example.com",
+	algorithms: ["ES256"],
+	keys: publicKey, // one pinned key, nothing to fetch
+	maxTokenAge: "10m",
+});
+```
+
+Hand it a private key by mistake and it refuses: profiles verify, they don't
+sign, and the error says exactly that. The key's algorithm has to be one you
+allowlisted too, so a key you imported for `ES256` won't quietly slip into an
+`EdDSA`-only profile.
+
+Got a handful of keys but still no endpoint to serve them from? Pass a JWKS
+document straight in, the same shape a `/jwks` URL would return, just inlined:
+
+```ts
+keys: {
+	keys: [
+		{ kty: "OKP", crv: "Ed25519", x: "...", kid: "2024-key" },
+		{ kty: "EC", crv: "P-256", x: "...", y: "...", kid: "2025-key" },
+	],
+},
+```
+
+Selection is exact: the token's `kid` (and its algorithm's key type and curve)
+has to single out one key. Two keys that both match with no `kid` to tell them
+apart is treated as your mistake, not something to guess at.
+
+And if your keys live somewhere less ordinary (an HSM, a secrets manager, a
+database), anything with a `getVerificationKey(header)` method is a valid `keys`
+value. That's the escape hatch; the two built-in sources are just the ones
+you'll reach for most.
 
 ### Sign
 
@@ -91,7 +139,7 @@ const { payload } = await jwtVerify(token, accessToken); // VerifiedJwt - every 
 `issuer`, `audience` and `expiresIn` (waivable only via grep-loud
 `unsafeAllowMissing*` calls). Every token gets a unique `jti`, lifetimes are
 capped (default 1h), and a hygiene scanner rejects payloads that contain
-things like passwords, card numbers, PEM keys, or other JWTs - because **a
+things like passwords, card numbers, PEM keys, or other JWTs, because **a
 JWS payload is base64url-encoded plaintext, readable by anyone who holds the
 token**. Never put secrets in it.
 
@@ -112,19 +160,19 @@ const token = await new SignJWT("at+jwt")
 A note on HMAC (`HS256/384/512`): it is supported, but every verifier of an
 HMAC token holds the same secret and can therefore also **mint** them. For
 anything beyond a single service, use asymmetric keys + JWKS. HMAC secrets
-are entropy-checked at import - `"my-secret"` will not import, ever;
+are entropy-checked at import. `"my-secret"` will not import, ever;
 `generateSecret()` gives you a proper one.
 
 ### Transport: the paved road
 
-Do **not** put tokens in `localStorage` or `sessionStorage` - both are
+Do **not** put tokens in `localStorage` or `sessionStorage`: both are
 readable by any script on the page, so one XSS means token theft. Use an
 `HttpOnly` cookie (browsers) or an in-memory bearer token (services):
 
 ```ts
 import { setTokenCookie, readTokenCookie, parseBearer } from "lacewing";
 
-setTokenCookie(response.headers, token); // always HttpOnly; Secure; SameSite - weaker is unrepresentable
+setTokenCookie(response.headers, token); // always HttpOnly; Secure; SameSite, weaker is unrepresentable
 const fromCookie = readTokenCookie(request);
 const fromHeader = parseBearer(request); // strict RFC 6750; no query-string tokens, ever
 ```
@@ -133,7 +181,7 @@ const fromHeader = parseBearer(request); // strict RFC 6750; no query-string tok
 
 The single most common token-confusion bug is letting a refresh token buy API
 access, or an access token mint new sessions. Lacewing **ships** the two
-profiles rather than leaving them as homework - they are mutually exclusive by
+profiles rather than leaving them as homework. They are mutually exclusive by
 `typ` (RFC 8725 §3.12), so presenting one where the other is expected fails,
 even with identical keys, claims and audience:
 
@@ -185,7 +233,7 @@ errors fail closed.
 ### Revocation is not replay protection
 
 Be precise about what revocation buys you: it lets you kill a
-token you *know about* (logout, compromise). It does **not** stop replay - a
+token you *know about* (logout, compromise). It does **not** stop replay: a
 valid, non-revoked token that leaks can be replayed by anyone who holds it
 until `exp`. That is the deliberate cost of stateless verification, and no
 JWT library can remove it without becoming a session store.
@@ -225,10 +273,10 @@ Your levers, in order of cheapness:
 ### Encrypting (JWE): when the payload really is a secret
 
 A signed JWT is readable plaintext. When you genuinely need the payload
-*hidden* - not just tamper-evident - use an encrypted JWT. Same discipline as
+*hidden*, not just tamper-evident, use an encrypted JWT. Same discipline as
 signing (mandatory `typ`, required `iss`/`aud`/`exp`, unique `jti`, capped
 lifetime), but with a curated set of encryption algorithms and no `none`. The
-sign-time hygiene scanner is deliberately off here - hiding secrets is the
+sign-time hygiene scanner is deliberately off here, since hiding secrets is the
 whole point:
 
 ```ts
@@ -242,7 +290,7 @@ const token = await new EncryptJWT("at+jwt", { contentEncryption: "A256GCM" })
   .issuer("https://auth.example.com")
   .audience("https://api.example.com")
   .subject("user-42")
-  .claim("ssn", "123-45-6789") // fine - it's encrypted, not just encoded
+  .claim("ssn", "123-45-6789") // fine: it's encrypted, not just encoded
   .expiresIn("10m")
   .encrypt(publicKey);
 
@@ -256,24 +304,24 @@ const profile = defineDecryptionProfile({
   maxTokenAge: "10m",
 });
 
-const { payload } = await jwtDecrypt(token, profile); // DecryptedJwt - distinct from VerifiedJwt
+const { payload } = await jwtDecrypt(token, profile); // DecryptedJwt, distinct from VerifiedJwt
 ```
 
 `none`, `RSA1_5`, `RSA-OAEP` (SHA-1) and the password-based `PBES2*` family are
 absent by construction. A JWS handed to `jwtDecrypt` (or a JWE handed to
-`jwtVerify`) is rejected - the two formats never cross over.
+`jwtVerify`) is rejected: the two formats never cross over.
 
-**Portability caveat - 192-bit AES:** the registry includes the `A192*`
+**Portability caveat (192-bit AES):** the registry includes the `A192*`
 algorithms (`A192KW`, `A192GCMKW`, `A192GCM`, `A192CBC-HS384`) for JOSE
 completeness, and they work on Node ≥ 24 (Lacewing's floor). But WebCrypto
 implementations in browsers and some edge runtimes do not implement 192-bit
 AES at all. If tokens must be decrypted outside Node, stick to the `A128*` /
-`A256*` variants - there is no security reason to prefer 192-bit anyway.
+`A256*` variants. There is no security reason to prefer 192-bit anyway.
 
 ### Debugging
 
 `unsafeDecode(token)` parses without verifying and returns an `UntrustedJwt`
-that is type-incompatible with `VerifiedJwt` - useful for inspecting expired
+that is type-incompatible with `VerifiedJwt`: useful for inspecting expired
 tokens, useless (by design) for auth logic.
 
 ### Legacy interop
@@ -306,7 +354,7 @@ The other reason is irritation. Generic JWT libraries are fine, but they leave e
 - Not configuring `iss` or `aud`
 - Over-caching a JWKS when an endpoint goes down
 
-Insecure usage is still *possible* - but only unmistakably deliberate, through `unsafe*`-prefixed escape hatches that are easy to grep for in code review. Secure usage is the path of least resistance.
+Insecure usage is still *possible*, but only unmistakably deliberate, through `unsafe*`-prefixed escape hatches that are easy to grep for in code review. Secure usage is the path of least resistance.
 
 ## Attribution
 
