@@ -40,12 +40,12 @@ const FIXTURES: Array<{ file: string; code: string; why: string }> = [
 	},
 	{
 		file: "profile-requires-typ.ts",
-		code: "TS2345",
+		code: "TS2741",
 		why: "a profile without a typ must not typecheck",
 	},
 	{
 		file: "raw-key-cannot-sign.ts",
-		code: "TS2345",
+		code: "TS2739",
 		why: "a bare CryptoKey must not be signable - keys come through importKey",
 	},
 ];
