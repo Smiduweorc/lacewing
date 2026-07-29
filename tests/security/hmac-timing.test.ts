@@ -46,9 +46,9 @@ test("@security HMAC rejection timing is not obviously input-dependent (smoke, n
 	const realSig = Buffer.from((valid.split(".")[2]) as string, "base64url");
 
 	const flipFirst = Uint8Array.from(realSig);
-	flipFirst[0] ^= 0xff;
+	flipFirst[0] = (flipFirst[0] as number) ^ 0xff;
 	const flipLast = Uint8Array.from(realSig);
-	flipLast[flipLast.length - 1] ^= 0xff;
+	flipLast[flipLast.length - 1] = (flipLast[flipLast.length - 1] as number) ^ 0xff;
 
 	const tokenFirst = `${h}.${p}.${b64u(flipFirst)}`;
 	const tokenLast = `${h}.${p}.${b64u(flipLast)}`;

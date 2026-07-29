@@ -19,7 +19,7 @@ function base(): Parameters<typeof defineProfile>[0] {
 
 test("[8725-3.1.1] typ, issuer, audience, algorithms, keys and maxTokenAge are structurally mandatory", () => {
 	for (const field of ["typ", "issuer", "audience", "algorithms", "keys", "maxTokenAge"]) {
-		const options = base() as Record<string, unknown>;
+		const options = base() as unknown as Record<string, unknown>;
 		delete options[field];
 		assert.throws(
 			() => defineProfile(options as never),
