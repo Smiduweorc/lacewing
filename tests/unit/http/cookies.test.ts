@@ -79,3 +79,13 @@ test("readTokenCookie returns undefined for absent or malformed cookies", () => 
 	assert.equal(readTokenCookie("__Host-token=bad token"), undefined);
 	assert.equal(readTokenCookie(`x=${"a".repeat(20000)}`), undefined);
 });
+
+test("readTokenCookie refuses a shadowed cookie rather than guessing", () => {
+	// Servers disagree on whether the first or last duplicate wins; an
+	// attacker who can set a same-named cookie relies on that disagreement.
+	const shadowed = `__Host-token=${TOKEN}; __Host-token=attackervalue`;
+	assert.equal(readTokenCookie(shadowed), undefined);
+	assert.equal(readTokenCookie(`__Host-token=attackervalue; __Host-token=${TOKEN}`), undefined);
+	// One occurrence is still fine, neighbours and all.
+	assert.equal(readTokenCookie(`other=1; __Host-token=${TOKEN}; last=2`), TOKEN);
+});
