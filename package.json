@@ -1,6 +1,6 @@
 {
 	"name": "lacewing",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "An opinionated JWT library that makes RFC 8725 (JWT Best Current Practices) the default behavior, not an optional configuration.",
 	"type": "module",
 	"engines": {

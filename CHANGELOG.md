@@ -2,6 +2,34 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.1] - 2026-07-29
+
+### Bug Fixes
+
+- Corrected test types
+- Corrected segment decoding behaviour and also added test for regression testing
+- Bound stale key serving, cap response bytes and refuse symmetric keys
+- Stop rejecting valid numeric ids, dotted audiences and token metadata
+- [**breaking**] Refuse a shadowed token cookie instead of guessing which duplicate wins
+- Chunk the password-likeness scan so large key material cannot overflow
+
+### Documentation
+
+- Updated README to also include explanation of how to use custom JWKS
+- Document the JWKS outage window, maxTokenLifetime and cookie shadowing
+
+### Features
+
+- Add optional maxTokenLifetime to cap a token's declared exp
+
+### Miscellaneous Tasks
+
+- Bump typescript-eslint from 8.63.0 to 8.64.0
+- Bump tsx from 4.23.0 to 4.23.1
+- Bump typescript-eslint from 8.64.0 to 8.65.0
+- Bumped various deps
+- Bump @types/node from 26.1.1 to 26.1.2
+
 ## [1.0.0] - 2026-07-12
 
 ### Miscellaneous Tasks
