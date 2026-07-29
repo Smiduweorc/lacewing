@@ -112,12 +112,17 @@ export function readTokenCookie(
 	if (typeof cookieHeader !== "string" || cookieHeader.length > 16384) {
 		return undefined;
 	}
+	let found: string | undefined;
 	for (const pair of cookieHeader.split(";")) {
 		const eq = pair.indexOf("=");
 		if (eq === -1) continue;
 		if (pair.slice(0, eq).trim() !== name) continue;
+		// Cookie shadowing: servers disagree about whether the first or last
+		// duplicate wins, so a header carrying the name twice is ambiguous.
+		// Ambiguous input is refused rather than guessed at.
+		if (found !== undefined) return undefined;
 		const value = pair.slice(eq + 1).trim();
-		return COOKIE_VALUE.test(value) && value.length > 0 ? value : undefined;
+		found = COOKIE_VALUE.test(value) && value.length > 0 ? value : "";
 	}
-	return undefined;
+	return found === undefined || found === "" ? undefined : found;
 }

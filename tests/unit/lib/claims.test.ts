@@ -165,3 +165,53 @@ test("oversized string claims are rejected", async () => {
 		JWTClaimValidationFailed
 	);
 });
+
+// --- declared lifetime vs current age (issue #14) ------------------------
+
+test("[LW-life.2] maxTokenAge bounds usable age, not the declared lifetime", async () => {
+	const now = Math.floor(Date.now() / 1000);
+	const profile = defineProfile({
+		typ: "at+jwt",
+		issuer: "https://auth.example.com",
+		audience: "https://api.example.com",
+		algorithms: ["HS256"],
+		keys: generateSecret("HS256"),
+		maxTokenAge: "10m",
+	});
+	// A token minted now but declaring a decade: accepted while young...
+	const decade = {
+		iss: "https://auth.example.com",
+		aud: "https://api.example.com",
+		iat: now,
+		exp: now + 10 * 365 * 86400,
+	};
+	await assert.doesNotReject(validateClaims(decade, profile, now));
+	// ...and refused once it is older than the age window (plus default skew).
+	await assert.rejects(validateClaims(decade, profile, now + 700), JWTExpired);
+});
+
+test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright", async () => {
+	const now = Math.floor(Date.now() / 1000);
+	const base = {
+		typ: "at+jwt",
+		issuer: "https://auth.example.com",
+		audience: "https://api.example.com",
+		algorithms: ["HS256"],
+		keys: generateSecret("HS256"),
+		maxTokenAge: "10m",
+	} as const;
+	const profile = defineProfile({ ...base, maxTokenLifetime: "1h" });
+	const payload = (lifetime: number): Record<string, unknown> => ({
+		iss: "https://auth.example.com",
+		aud: "https://api.example.com",
+		iat: now,
+		exp: now + lifetime,
+	});
+	// Within the declared cap: fine.
+	await assert.doesNotReject(validateClaims(payload(1800), profile, now));
+	// A decade-long span is a misissuance signal, refused on sight.
+	await assert.rejects(validateClaims(payload(10 * 365 * 86400), profile, now), JWTClaimValidationFailed);
+	// Opt-in: without it, the same token is only bounded by maxTokenAge.
+	await assert.doesNotReject(validateClaims(payload(10 * 365 * 86400), defineProfile(base), now));
+	assert.throws(() => defineProfile({ ...base, maxTokenLifetime: 0 }), TypeError);
+});

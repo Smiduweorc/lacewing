@@ -38,8 +38,14 @@ export interface ProfileOptions {
 	algorithms: readonly string[];
 	/** Key source: a JWKS (static or remote config), a KeySource, or a single key. */
 	keys: KeySource | LacewingKey | StaticJWKS | RemoteJWKS;
-	/** Maximum accepted token age, independent of `exp`. */
+	/** Maximum accepted token age (`now - iat`), independent of `exp`. */
 	maxTokenAge: number | string;
+	/**
+	 * Optional cap on the token's *declared* lifetime (`exp - iat`). Where
+	 * `maxTokenAge` bounds how long a token stays usable, this refuses a token
+	 * whose issuer claimed an implausible span at all - a misissuance signal.
+	 */
+	maxTokenLifetime?: number | string;
 	/** Allowed clock skew, default 5s, capped at 120s. */
 	maxClockSkew?: number | string;
 	/** Optional revocation store - its absence is a visible choice. */
@@ -89,6 +95,7 @@ function normalizeKeys(
 				cacheTtlSeconds: remote.cacheTtlSeconds,
 				cooldownSeconds: remote.cooldownSeconds,
 				timeoutMs: remote.timeoutMs,
+				staleWhileErrorSeconds: remote.staleWhileErrorSeconds,
 			});
 		}
 	}
@@ -116,6 +123,11 @@ export function defineProfile(options: ProfileOptions): ExpectedJwtProfile {
 	if (maxClockSkew > MAX_CLOCK_SKEW_SECONDS) {
 		throw new TypeError(`Profile maxClockSkew is capped at ${MAX_CLOCK_SKEW_SECONDS} seconds`);
 	}
+	const maxTokenLifetime =
+		options.maxTokenLifetime === undefined ? undefined : parseDuration(options.maxTokenLifetime);
+	if (maxTokenLifetime !== undefined && maxTokenLifetime < 1) {
+		throw new TypeError("Profile maxTokenLifetime must be at least one second");
+	}
 
 	if (options.revocation !== undefined && typeof options.revocation.isRevoked !== "function") {
 		throw new TypeError("Profile revocation store must implement isRevoked()");
@@ -140,6 +152,7 @@ export function defineProfile(options: ProfileOptions): ExpectedJwtProfile {
 		maxTokenAge: toSeconds(maxTokenAge),
 		maxClockSkew: toSeconds(maxClockSkew),
 	};
+	if (maxTokenLifetime !== undefined) profile.maxTokenLifetime = toSeconds(maxTokenLifetime);
 	if (options.revocation !== undefined) profile.revocation = options.revocation;
 	if (options.claimValidators !== undefined) {
 		profile.claimValidators = { ...options.claimValidators };

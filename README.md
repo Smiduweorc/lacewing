@@ -8,7 +8,7 @@ Instead of exposing low-level primitives and trusting you to compose them correc
 **Batteries loaded (RFC 8725).** Out of the box:
 
 - **Verification profiles**: the only way to verify; `typ`, issuer, audience, algorithm allowlist and key source are structurally mandatory
-- **Remote JWKS** with caching, rotation handling, and `kid` hygiene
+- **Remote JWKS** with caching, rotation handling, `kid` hygiene, and a *bounded* stale-serving window when the endpoint goes down
 - **Token revocation**: unique `jti` on every token, pluggable `RevocationStore`, in-memory store included
 - **Secure cookie + bearer helpers**: `HttpOnly; Secure; SameSite` enforced, strict RFC 6750 parsing
 - **Access/refresh token presets**: mutually exclusive by `typ`, shipped rather than left as homework
@@ -85,6 +85,27 @@ const accessToken = defineProfile({
 const { payload } = await jwtVerify(token, accessToken); // VerifiedJwt: every check passed
 ```
 
+**When the endpoint goes down**, the last good keys keep serving for a bounded
+window (1h by default) and then verification **fails closed**. The bound is the
+whole point: keys that go stale forever mean a key you rotated out *because it
+was compromised* stays trusted for exactly as long as an attacker can keep your
+JWKS unreachable. Trade availability against freshness explicitly:
+
+```ts
+createRemoteJWKSet("https://auth.example.com/jwks", {
+	cacheTtlSeconds: 300,         // fallback when the response sends no Cache-Control
+	cooldownSeconds: 30,          // floor between fetch attempts
+	staleWhileErrorSeconds: 3600, // how long a dead endpoint may coast; 0 = never
+});
+```
+
+Two more things that endpoint does not get to do. The response is read under a
+hard byte budget, checked against `Content-Length` and again on every chunk, so
+a hostile or broken endpoint cannot stream you out of memory. And symmetric
+(`oct`) entries are refused from a *remote* set: a JWKS endpoint is public, so a
+secret published there is one every reader could **mint** with, not merely
+verify with. A local JWKS may still carry them.
+
 ### Verify: keys you already have
 
 Not everyone has a JWKS endpoint to point at. If the issuer handed you a raw
@@ -160,8 +181,12 @@ const token = await new SignJWT("at+jwt")
 A note on HMAC (`HS256/384/512`): it is supported, but every verifier of an
 HMAC token holds the same secret and can therefore also **mint** them. For
 anything beyond a single service, use asymmetric keys + JWKS. HMAC secrets
-are entropy-checked at import. `"my-secret"` will not import, ever;
-`generateSecret()` gives you a proper one.
+must meet the RFC 7518 length floor and are screened by an entropy
+heuristic, so `"my-secret"` will not import, ever. The heuristic catches
+short and low-entropy secrets, not every bad one a human can invent. PLEASE use
+`generateSecret()` and don't hand-write key material. Symmetric keys are
+also refused from a *remote* JWKS: that endpoint is public, so a secret
+published there is one anyone can mint with.
 
 ### Transport: the paved road
 
@@ -176,6 +201,12 @@ setTokenCookie(response.headers, token); // always HttpOnly; Secure; SameSite, w
 const fromCookie = readTokenCookie(request);
 const fromHeader = parseBearer(request); // strict RFC 6750; no query-string tokens, ever
 ```
+
+Both readers refuse ambiguity rather than resolving it. `parseBearer` rejects
+the `", "`-joined value `Headers` produces when a request carried two
+`Authorization` headers, and `readTokenCookie` returns `undefined` when the
+cookie name appears twice, the servers disagree about whether the first or the
+last duplicate wins, and cookie shadowing is built on that disagreement.
 
 ### Access vs refresh (the cookbook)
 
@@ -229,6 +260,33 @@ The store is consulted only *after* signature and claims pass, and store
 errors fail closed.
 
 ## Advanced
+
+### Age vs lifetime: two different caps
+
+`maxTokenAge` and `maxTokenLifetime` sound alike and do different jobs.
+
+**`maxTokenAge`** (required) bounds how long after issuance a token still works
+*here* (`now - iat`). It is enforced independently of `exp`, so a token minted
+with a decade-long `exp` stops being accepted once it is older than your cap,
+no matter what the issuer wrote.
+
+**`maxTokenLifetime`** (optional) bounds the span the issuer *declared*
+ (`exp - iat`). Note what `maxTokenAge` alone does with that decade-long token:
+it accepts it, right up until the age window closes. That is usually fine, since
+the age window is what actually governs. But an `exp` wildly beyond your own
+policy is a misissuance signal, and this refuses it on sight instead of
+tolerating it for the length of the window:
+
+```ts
+const profile = defineProfile({
+	/* ...as above... */
+	maxTokenAge: "10m",     // unusable 10m after iat, whatever exp claims
+	maxTokenLifetime: "1h", // and refuse anything declaring a span beyond 1h
+});
+```
+
+It is opt-in because plenty of legitimate issuers set a generous `exp` and
+expect the verifier's own window to do the limiting.
 
 ### Revocation is not replay protection
 
@@ -352,7 +410,7 @@ The other reason is irritation. Generic JWT libraries are fine, but they leave e
 - No way to revoke stateless JWTs
 - Storing tokens in `localStorage` or `sessionStorage`
 - Not configuring `iss` or `aud`
-- Over-caching a JWKS when an endpoint goes down
+- Over-caching a JWKS when an endpoint goes down (stale keys serve for a bounded window, then verification fails closed)
 
 Insecure usage is still *possible*, but only unmistakably deliberate, through `unsafe*`-prefixed escape hatches that are easy to grep for in code review. Secure usage is the path of least resistance.
 

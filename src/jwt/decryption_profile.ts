@@ -35,8 +35,10 @@ export interface DecryptionProfileOptions {
 	contentEncryptionAlgorithms: readonly string[];
 	/** The private/secret key that decrypts (bound to one key-management alg). */
 	key: LacewingEncryptionKey;
-	/** Maximum accepted token age, independent of `exp`. */
+	/** Maximum accepted token age (`now - iat`), independent of `exp`. */
 	maxTokenAge: number | string;
+	/** Optional cap on the token's declared lifetime (`exp - iat`). */
+	maxTokenLifetime?: number | string;
 	/** Allowed clock skew, default 5s, capped at 120s. */
 	maxClockSkew?: number | string;
 	revocation?: RevocationStore;
@@ -83,6 +85,11 @@ export function defineDecryptionProfile(options: DecryptionProfileOptions): Expe
 	if (maxClockSkew > MAX_CLOCK_SKEW_SECONDS) {
 		throw new TypeError(`Decryption profile maxClockSkew is capped at ${MAX_CLOCK_SKEW_SECONDS} seconds`);
 	}
+	const maxTokenLifetime =
+		options.maxTokenLifetime === undefined ? undefined : parseDuration(options.maxTokenLifetime);
+	if (maxTokenLifetime !== undefined && maxTokenLifetime < 1) {
+		throw new TypeError("Decryption profile maxTokenLifetime must be at least one second");
+	}
 	if (options.revocation !== undefined && typeof options.revocation.isRevoked !== "function") {
 		throw new TypeError("Decryption profile revocation store must implement isRevoked()");
 	}
@@ -103,6 +110,7 @@ export function defineDecryptionProfile(options: DecryptionProfileOptions): Expe
 		maxTokenAge: toSeconds(maxTokenAge),
 		maxClockSkew: toSeconds(maxClockSkew),
 	};
+	if (maxTokenLifetime !== undefined) profile.maxTokenLifetime = toSeconds(maxTokenLifetime);
 	if (options.revocation !== undefined) profile.revocation = options.revocation;
 	if (options.claimValidators !== undefined) profile.claimValidators = { ...options.claimValidators };
 	if (options.subject !== undefined) profile.subject = options.subject;

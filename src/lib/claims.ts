@@ -89,10 +89,24 @@ export async function validateClaims(
 		throw new JWTClaimValidationFailed("iat", "Token issued-at time is in the future");
 	}
 
-	// maxTokenAge - enforced independently of exp (LW-life.2), so a
-	// compromised signer can't mint decade-long tokens we accept.
+	// maxTokenAge - enforced independently of exp (LW-life.2). This bounds how
+	// long after issuance a token stays usable *here*, whatever `exp` claims:
+	// a token minted with a decade-long exp is still refused once it is older
+	// than maxTokenAge. It does not reject such a token on sight - see
+	// maxTokenLifetime for that.
 	if (nowSeconds - iat > profile.maxTokenAge + skew) {
 		throw new JWTExpired("Token exceeds the profile's maximum age");
+	}
+
+	// maxTokenLifetime - optional, and about the token's *declared* span
+	// (exp - iat) rather than its current age. An absurd declared lifetime is
+	// a misissuance signal worth refusing outright rather than silently
+	// tolerating for the length of the age window.
+	if (profile.maxTokenLifetime !== undefined && exp - iat > profile.maxTokenLifetime) {
+		throw new JWTClaimValidationFailed(
+			"exp",
+			"Token's declared lifetime (exp - iat) exceeds the profile's maximum"
+		);
 	}
 
 	// nbf - optional, but honored when present.

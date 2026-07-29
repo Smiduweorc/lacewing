@@ -33,7 +33,37 @@ const SENSITIVE_NAME_FRAGMENTS = [
 ] as const;
 
 const PEM_PRIVATE_KEY = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
-const JWT_LIKE = /^[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}$/;
+
+// A compact JWS/JWE always begins with a base64url-encoded JSON object, and
+// `{"` encodes to `eyJ`. Anchoring on that keeps ordinary dotted identifiers
+// (bare hostnames, reverse-DNS names) from reading as embedded tokens. The
+// last segment may be empty - that is exactly an `alg: none` token.
+const JWT_LIKE = /^eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*$/;
+
+/**
+ * Standard OAuth/OIDC claim names that describe *this* token rather than
+ * carrying one. Without them, `token_use` (AWS Cognito) and `token_type`
+ * trip the `token` fragment and force an `unsafeAllowClaim` waiver onto a
+ * perfectly correct payload - which is exactly how a grep-loud marker stops
+ * being worth grepping for.
+ */
+const BENIGN_NAMES = new Set(["tokenuse", "tokentype"]);
+
+/**
+ * Issuer Identification Numbers, as `[prefix regex, valid lengths]`. Luhn
+ * alone is a 1-in-10 coin flip on any digit string, which rejects roughly a
+ * tenth of all snowflake-style numeric user ids; requiring a real card prefix
+ * *and* that brand's length makes the check mean something.
+ */
+const CARD_BRANDS: ReadonlyArray<readonly [RegExp, readonly number[]]> = [
+	[/^4/, [13, 16, 19]], // Visa
+	[/^(5[1-5]|2(2[2-9]|[3-6]\d|7[01]|720))/, [16]], // Mastercard
+	[/^3[47]/, [15]], // American Express
+	[/^(6011|65|64[4-9])/, [16, 19]], // Discover
+	[/^3(0[0-5]|095|6|[89])/, [14, 16, 19]], // Diners Club
+	[/^35(2[89]|[3-8]\d)/, [16, 17, 18, 19]], // JCB
+	[/^62/, [16, 17, 18, 19]], // UnionPay
+];
 
 function normalizeName(name: string): string {
 	return name.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -41,14 +71,13 @@ function normalizeName(name: string): string {
 
 function sensitiveNameFragment(name: string): string | undefined {
 	const normalized = normalizeName(name);
+	if (BENIGN_NAMES.has(normalized)) {
+		return undefined;
+	}
 	return SENSITIVE_NAME_FRAGMENTS.find((fragment) => normalized.includes(fragment));
 }
 
-function isLuhnValidCardNumber(value: string): boolean {
-	const digits = value.replace(/[\s-]/g, "");
-	if (!/^\d{13,19}$/.test(digits)) {
-		return false;
-	}
+function passesLuhn(digits: string): boolean {
 	let sum = 0;
 	let double = false;
 	for (let i = digits.length - 1; i >= 0; i--) {
@@ -61,6 +90,17 @@ function isLuhnValidCardNumber(value: string): boolean {
 		double = !double;
 	}
 	return sum % 10 === 0;
+}
+
+function isLuhnValidCardNumber(value: string): boolean {
+	const digits = value.replace(/[\s-]/g, "");
+	if (!/^\d{13,19}$/.test(digits)) {
+		return false;
+	}
+	const brandMatches = CARD_BRANDS.some(
+		([prefix, lengths]) => prefix.test(digits) && lengths.includes(digits.length)
+	);
+	return brandMatches && passesLuhn(digits);
 }
 
 function checkValue(topLevelClaim: string, value: string): void {

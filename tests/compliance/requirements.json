@@ -43,6 +43,11 @@
 		{ "id": "LW-http.1", "level": "MUST", "mechanism": "design", "summary": "The cookie helper always emits HttpOnly; Secure; SameSite - weaker configs are unrepresentable." },
 		{ "id": "LW-http.2", "level": "MUST", "mechanism": "design", "summary": "The bearer parser is strict RFC 6750: no query-string tokens, single token only." },
 		{ "id": "LW-http.3", "level": "MUST", "mechanism": "docs", "summary": "Documentation warns against localStorage/sessionStorage and shows the cookie/memory alternatives." },
+		{ "id": "LW-jwks.1", "level": "MUST", "mechanism": "design", "summary": "Remote JWKS URLs are HTTPS-only, redirects are never followed, and a cooldown bounds attacker-driven refetches." },
+		{ "id": "LW-jwks.2", "level": "MUST", "mechanism": "runtime", "summary": "Stale keys serve for a bounded window after the endpoint starts failing, then verification fails closed - a key rotated out after a compromise cannot stay trusted for as long as the endpoint is unreachable." },
+		{ "id": "LW-jwks.3", "level": "MUST", "mechanism": "runtime", "summary": "The JWKS response byte budget is enforced against Content-Length and against each chunk as it arrives, never by measuring a fully buffered body." },
+		{ "id": "LW-jwks.4", "level": "MUST", "mechanism": "design", "summary": "Symmetric (oct) keys are refused from a remote JWKS: the endpoint is public, so a secret published there is one any reader could mint with." },
+
 		{ "id": "LW-kind.1", "level": "MUST", "mechanism": "design", "summary": "Cookbook access/refresh profiles are mutually exclusive by typ (property test over them)." },
 		{ "id": "LW-alg.1", "level": "SHOULD", "mechanism": "docs", "summary": "Docs/examples/generators default to asymmetric (EdDSA); HMAC docs lead with the symmetric-distribution caveat." },
 

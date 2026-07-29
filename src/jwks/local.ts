@@ -34,12 +34,25 @@ function isCandidate(jwk: StaticJWK, header: JwtHeader): boolean {
 	return true;
 }
 
+export interface ResolveFromJwksOptions {
+	/**
+	 * Whether symmetric (`oct`) entries may be used. False for remote sets: a
+	 * JWKS endpoint is public, so a secret published there is a secret every
+	 * reader can *mint* with, not just verify with.
+	 */
+	allowSymmetric?: boolean;
+}
+
 /** Shared selection + import used by both local and remote sets. */
 export async function resolveFromJwks(
 	keys: readonly StaticJWK[],
-	header: JwtHeader
+	header: JwtHeader,
+	options: ResolveFromJwksOptions = {}
 ): Promise<ResolvedVerificationKey> {
-	const candidates = keys.filter((jwk) => isCandidate(jwk, header));
+	const allowSymmetric = options.allowSymmetric ?? true;
+	const candidates = keys.filter(
+		(jwk) => isCandidate(jwk, header) && (allowSymmetric || jwk.kty !== "oct")
+	);
 	if (candidates.length === 0) {
 		throw new JWKSNoMatchingKey("No key in the JWKS matches this token");
 	}

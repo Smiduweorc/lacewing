@@ -108,3 +108,64 @@ test("unsafeAllowClaim-style waivers skip the whole subtree", () => {
 		)
 	);
 });
+
+// --- heuristic precision (issue #14) -------------------------------------
+// A scanner that rejects valid payloads pushes developers to unsafeAllowClaim,
+// which is the marker code review depends on staying rare.
+
+test("[LW-payload.2] numeric ids are not mistaken for payment cards", () => {
+	// Luhn alone is a 1-in-10 coin flip; snowflake-style ids must survive it.
+	for (const id of [
+		"4532015112830366", // 16 digits, Luhn-valid, but Visa-prefixed -> still a card
+	]) {
+		assert.throws(() => scanPayloadForSensitiveData({ sub: id }), PayloadHygieneViolation);
+	}
+	for (const id of [
+		"755193776567357440", // Discord-style snowflake, 18 digits, Luhn-valid
+		"1234567890123456789", // 19 digits, no card prefix
+		"9876543210987654", // 16 digits, no card prefix
+	]) {
+		assert.doesNotThrow(() => scanPayloadForSensitiveData({ sub: id }), `rejected ${id}`);
+	}
+});
+
+test("[LW-payload.2] every card brand is still caught", () => {
+	for (const card of [
+		"4111111111111111", // Visa
+		"5555555555554444", // Mastercard
+		"2223003122003222", // Mastercard 2-series
+		"378282246310005", // American Express
+		"6011111111111117", // Discover
+		"3530111333300000", // JCB
+	]) {
+		assert.throws(
+			() => scanPayloadForSensitiveData({ note: card }),
+			PayloadHygieneViolation,
+			`missed ${card}`
+		);
+	}
+});
+
+test("[LW-payload.2] dotted identifiers are not mistaken for embedded JWTs", () => {
+	// A compact JWS always starts `eyJ` - a bare hostname does not.
+	for (const value of [
+		"authentication.microsoftonline.production",
+		"eu-west-1.identity-provider.internal",
+	]) {
+		assert.doesNotThrow(() => scanPayloadForSensitiveData({ aud: value }), `rejected ${value}`);
+	}
+	// Real tokens, including an unsigned one, still trip it.
+	assert.throws(
+		() => scanPayloadForSensitiveData({ upstream: "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0NTY3ODkwIn0." }),
+		PayloadHygieneViolation
+	);
+});
+
+test("[LW-payload.1] standard OAuth metadata claims are not sensitive names", () => {
+	// token_use (AWS Cognito) and token_type describe this token, not another.
+	assert.doesNotThrow(() => scanPayloadForSensitiveData({ token_use: "access" }));
+	assert.doesNotThrow(() => scanPayloadForSensitiveData({ token_type: "Bearer" }));
+	// The fragment still bites where it should.
+	assert.throws(() => scanPayloadForSensitiveData({ access_token: "x" }), PayloadHygieneViolation);
+	assert.throws(() => scanPayloadForSensitiveData({ refresh_token: "x" }), PayloadHygieneViolation);
+});
