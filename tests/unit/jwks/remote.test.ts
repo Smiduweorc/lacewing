@@ -37,7 +37,7 @@ function scriptedFetch(script: Array<() => Response>): { fetch: typeof fetch; ca
 	return { fetch: impl, calls: () => calls };
 }
 
-test("http URLs are rejected at construction", () => {
+test("[LW-jwks.1] http URLs are rejected at construction", () => {
 	assert.throws(() => createRemoteJWKSet("http://auth.example.com/jwks"), TypeError);
 	assert.throws(() => createRemoteJWKSet("not a url"), TypeError);
 });
@@ -75,7 +75,7 @@ test("refetches once on unknown kid (rotation), then fails closed", async () => 
 	await assert.rejects(source.getVerificationKey(header("carol"), ALLOWED), JWKSNoMatchingKey);
 });
 
-test("cooldown prevents unknown-kid fetch storms", async () => {
+test("[LW-jwks.1] cooldown prevents unknown-kid fetch storms", async () => {
 	const { fetch, calls } = scriptedFetch([() => jwksResponse([aliceJwk])]);
 	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 60 });
 	await source.getVerificationKey(header("alice"), ALLOWED);
@@ -129,4 +129,110 @@ test("concurrent verifications share a single fetch", async () => {
 		Array.from({ length: 10 }, () => source.getVerificationKey(header("alice"), ALLOWED))
 	);
 	assert.equal(calls(), 1);
+});
+
+// --- bounded stale-serving, byte budget, symmetric keys (issue #14) -------
+
+test("[LW-jwks.2] stale keys stop serving once the stale-while-error window closes", async () => {
+	let fail = false;
+	const impl = (async () => {
+		if (fail) throw new Error("endpoint down");
+		return jwksResponse([aliceJwk]);
+	}) as unknown as typeof fetch;
+	// staleWhileErrorSeconds: 0 - an unreachable endpoint fails closed at once.
+	const source = createRemoteJWKSet(URL_, {
+		fetch: impl,
+		cacheTtlSeconds: 0,
+		cooldownSeconds: 0,
+		staleWhileErrorSeconds: 0,
+	});
+	await source.getVerificationKey(header("alice"), ALLOWED);
+	fail = true;
+	// A key rotated out because it was compromised must not stay trusted for
+	// as long as an attacker can keep the endpoint down.
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+});
+
+test("[LW-jwks.2] the stale window is also enforced while cooling down", async () => {
+	let fail = false;
+	const impl = (async () => {
+		if (fail) throw new Error("endpoint down");
+		return jwksResponse([aliceJwk]);
+	}) as unknown as typeof fetch;
+	const source = createRemoteJWKSet(URL_, {
+		fetch: impl,
+		cacheTtlSeconds: 0,
+		cooldownSeconds: 3600, // long cooldown: the stale bound must still apply
+		staleWhileErrorSeconds: 0,
+	});
+	await source.getVerificationKey(header("alice"), ALLOWED);
+	fail = true;
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+});
+
+test("staleWhileErrorSeconds is validated", () => {
+	assert.throws(() => createRemoteJWKSet(URL_, { staleWhileErrorSeconds: -1 }), TypeError);
+	assert.throws(
+		() => createRemoteJWKSet(URL_, { staleWhileErrorSeconds: Number.NaN }),
+		TypeError
+	);
+});
+
+test("[LW-jwks.3] an oversized response is refused via Content-Length, before reading", async () => {
+	// A ReadableStream pre-fills its queue on its own (highWaterMark 1), so
+	// `pull` proves nothing. Watching getReader() is the honest signal.
+	let bodyRead = false;
+	const impl = (async () => ({
+		ok: true,
+		status: 200,
+		headers: new Headers({ "content-length": String(8 * 1024 * 1024) }),
+		get body() {
+			return {
+				getReader() {
+					bodyRead = true;
+					throw new Error("the body must never be read");
+				},
+			};
+		},
+	})) as unknown as typeof fetch;
+	const source = createRemoteJWKSet(URL_, { fetch: impl, cooldownSeconds: 0 });
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	assert.equal(bodyRead, false, "the body must not be pulled once the declared size is oversized");
+});
+
+test("[LW-jwks.3] an oversized chunked response is abandoned mid-stream", async () => {
+	// No Content-Length: the cap has to be enforced against bytes as they land,
+	// not against a fully buffered string afterwards.
+	let bytesProduced = 0;
+	const chunk = new TextEncoder().encode("x".repeat(64 * 1024));
+	const impl = (async () =>
+		new Response(
+			new ReadableStream({
+				pull(controller) {
+					bytesProduced += chunk.byteLength;
+					if (bytesProduced > 16 * 1024 * 1024) {
+						controller.close();
+						return;
+					}
+					controller.enqueue(chunk.slice());
+				},
+			}),
+			{ status: 200 }
+		)) as unknown as typeof fetch;
+	const source = createRemoteJWKSet(URL_, { fetch: impl, cooldownSeconds: 0 });
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	assert.ok(
+		bytesProduced <= 2 * 1024 * 1024,
+		`stream should be abandoned near the 1MB cap, produced ${bytesProduced} bytes`
+	);
+});
+
+test("[LW-jwks.4] symmetric keys are refused from a remote JWKS", async () => {
+	// A JWKS endpoint is public: a secret served there is one anyone can mint
+	// with, not merely verify with.
+	const octJwk = { kty: "oct", alg: "HS256", kid: "shared", k: "a".repeat(43) } as StaticJWK;
+	const { fetch } = scriptedFetch([() => jwksResponse([octJwk])]);
+	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 0 });
+	const hs: JwtHeader = { alg: toValidAlg("HS256"), typ: "at+jwt", kid: "shared" };
+	await assert.rejects(source.getVerificationKey(hs, [toValidAlg("HS256")]), JWKSNoMatchingKey);
 });
