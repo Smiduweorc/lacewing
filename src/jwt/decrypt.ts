@@ -115,6 +115,18 @@ export async function jwtDecrypt(
 		profile
 	);
 
+	// Strict decoding is authoritative for every segment, not just the header:
+	// the AEAD ignores the unused trailing bits of a segment whose length is not
+	// a multiple of four, so a lenient parser accepts several distinct token
+	// strings that decrypt to the same plaintext. Rejecting non-canonical
+	// base64url keeps the token string a stable identity for revocation and
+	// replay caches. The encrypted key is empty under `dir`, which is canonical.
+
+	// https://github.com/Smiduweorc/lacewing/issues/12
+	for (const segment of segments.slice(1)) {
+		decodeBase64url(segment);
+	}
+
 	if ((profile.key.algorithm as string) !== (header.alg as string)) {
 		throw new AlgorithmNotAllowed("Token key-management algorithm does not match the profile's key");
 	}
