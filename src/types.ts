@@ -123,6 +123,8 @@ export type RemoteJWKS = {
 	cacheTtlSeconds?: number;
 	cooldownSeconds?: number;
 	timeoutMs?: number;
+	/** Bounded stale-serving window once the endpoint starts failing (default 1h). */
+	staleWhileErrorSeconds?: number;
 };
 
 export type JWKSConfig = StaticJWKS | RemoteJWKS;
@@ -171,6 +173,8 @@ export interface ClaimsPolicy {
 	iss: string;
 	aud: string;
 	maxTokenAge: DurationSeconds;
+	/** Optional cap on the token's declared span (`exp - iat`). */
+	maxTokenLifetime?: DurationSeconds;
 	maxClockSkew: DurationSeconds;
 	subject?: string;
 	claimValidators?: Record<string, ValidateClaim>;
@@ -258,6 +262,8 @@ export interface ExpectedJwtProfile {
 	alg: readonly ValidAlg[];
 	keys: KeySource | LacewingKey;
 	maxTokenAge: DurationSeconds;
+	/** Optional cap on the token's declared span (`exp - iat`). */
+	maxTokenLifetime?: DurationSeconds;
 	maxClockSkew: DurationSeconds;
 	revocation?: RevocationStore;
 	claimValidators?: Record<string, ValidateClaim>;

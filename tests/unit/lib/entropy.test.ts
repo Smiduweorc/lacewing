@@ -53,3 +53,11 @@ test("raw random bytes are never password-like", () => {
 	random[0] = 0x01;
 	assert.equal(isPasswordLike(random), false);
 });
+
+test("a megabyte of printable bytes is screened without blowing the stack", () => {
+	// `k` can arrive from a JWKS document, so this path takes attacker-sized
+	// input; String.fromCharCode(...bytes) used to overflow here.
+	const huge = encoder.encode("a".repeat(1_000_000));
+	assert.equal(isPasswordLike(huge), true);
+	assert.throws(() => validateHMACSecret(huge, "HS256"), EntropyCheckFailed);
+});

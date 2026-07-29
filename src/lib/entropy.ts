@@ -46,7 +46,13 @@ export function isPasswordLike(bytes: Uint8Array): boolean {
 	if (!printableAscii) {
 		return false;
 	}
-	const text = String.fromCharCode(...bytes).toLowerCase();
+	// Chunked rather than spread: `k` can arrive from a JWKS document, and
+	// String.fromCharCode(...megabyte) overflows the call stack.
+	let text = "";
+	for (let i = 0; i < bytes.length; i += 4096) {
+		text += String.fromCharCode(...bytes.subarray(i, i + 4096));
+	}
+	text = text.toLowerCase();
 	if (COMMON_WORDS.some((word) => text.includes(word))) {
 		return true;
 	}
