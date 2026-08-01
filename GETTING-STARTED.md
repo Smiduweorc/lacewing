@@ -1,3 +1,7 @@
+---
+title: Getting started
+---
+
 # Getting started with Lacewing
 
 Adopting Lacewing in a real service: keys, profiles, issuing, verifying,

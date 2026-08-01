@@ -6,6 +6,12 @@
 	"excludePrivate": true,
 	"excludeInternal": true,
 	"readme": "README.md",
+	"projectDocuments": ["GETTING-STARTED.md"],
+	"externalSymbolLinkMappings": {
+		"typescript": {
+			"TypeError": "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/TypeError"
+		}
+	},
 	"validation": {
 		"notExported": false
 	}
