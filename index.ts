@@ -67,6 +67,7 @@ export {
 	type TokenCookieOptions,
 } from "./src/http/cookies.js";
 export { parseBearer } from "./src/http/bearer.js";
+export { type HeaderSource } from "./src/http/source.js";
 
 // Debugging escape hatch - branded untrusted, incompatible with VerifiedJwt
 export { unsafeDecode } from "./src/util/unsafe-decode.js";

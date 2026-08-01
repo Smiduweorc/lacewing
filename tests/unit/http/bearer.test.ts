@@ -51,6 +51,25 @@ test("missing or oversized headers are rejected", () => {
 	assert.throws(() => parseBearer(`Bearer ${"a".repeat(20000)}`), BearerParseFailed);
 });
 
+test("an unaccepted source throws TypeError, not a misleading 'missing header'", () => {
+	// Node/Express requests carry a plain `headers` record. Reporting that
+	// as BearerParseFailed("Missing Authorization header") blamed the client
+	// for a header that was in fact present.
+	const expressReq = { headers: { authorization: `Bearer ${TOKEN}` } };
+	assert.throws(() => parseBearer(expressReq as never), TypeError);
+	assert.throws(() => parseBearer(expressReq as never), /new Headers\(req\.headers/);
+	// A genuinely absent header is still the client-facing error.
+	assert.throws(() => parseBearer(null), BearerParseFailed);
+});
+
+test("a cross-realm Headers still parses", () => {
+	const foreign = {
+		get: (name: string) => (name === "authorization" ? `Bearer ${TOKEN}` : null),
+	};
+	assert.equal(parseBearer(foreign as never), TOKEN);
+	assert.equal(parseBearer({ headers: foreign } as never), TOKEN);
+});
+
 test("[LW-http.2] there is deliberately no query-string parsing", () => {
 	// The API accepts headers only; a URL never parses.
 	assert.throws(

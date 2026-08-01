@@ -80,6 +80,34 @@ test("readTokenCookie returns undefined for absent or malformed cookies", () => 
 	assert.equal(readTokenCookie(`x=${"a".repeat(20000)}`), undefined);
 });
 
+test("readTokenCookie throws on an unaccepted source instead of reading as absent", () => {
+	// A Node/Express request: `headers` is a plain record, not `Headers`.
+	// This used to return `undefined`, which is indistinguishable from a
+	// request that genuinely carried no cookie.
+	const expressReq = { headers: { cookie: `__Host-token=${TOKEN}` } };
+	assert.throws(() => readTokenCookie(expressReq as never), TypeError);
+	// The error has to say what to do about it, not just that it failed.
+	assert.throws(
+		() => readTokenCookie(expressReq as never),
+		/new Headers\(req\.headers/,
+		"the error should carry the fix"
+	);
+	for (const bad of [42, true, [], () => {}, Symbol("x")]) {
+		assert.throws(() => readTokenCookie(bad as never), TypeError, `should reject: ${String(bad)}`);
+	}
+	// An explicit nothing is still a legitimate "no cookie", not a mistake.
+	assert.equal(readTokenCookie(null), undefined);
+	assert.equal(readTokenCookie(undefined), undefined);
+});
+
+test("readTokenCookie accepts a cross-realm Headers", () => {
+	// A `Headers` from another realm (undici's own copy, a vm context, an
+	// edge/node boundary) fails `instanceof` but is still a Headers.
+	const foreign = { get: (name: string) => (name === "cookie" ? `__Host-token=${TOKEN}` : null) };
+	assert.equal(readTokenCookie(foreign as never), TOKEN);
+	assert.equal(readTokenCookie({ headers: foreign } as never), TOKEN);
+});
+
 test("readTokenCookie refuses a shadowed cookie rather than guessing", () => {
 	// Servers disagree on whether the first or last duplicate wins; an
 	// attacker who can set a same-named cookie relies on that disagreement.

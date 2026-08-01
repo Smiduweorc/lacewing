@@ -10,6 +10,8 @@
  * them, e.g. `Request`/`Response`).
  */
 
+import { readHeaderValue, type HeaderSource } from "./source.js";
+
 // RFC 6265 cookie-name token; value charset covers compact JWTs.
 const COOKIE_NAME = /^[!#$%&'*+\-.^_`|~A-Za-z0-9]+$/;
 const COOKIE_VALUE = /^[A-Za-z0-9._~+/=-]*$/;
@@ -96,19 +98,17 @@ export function clearTokenCookie(
  * Read a token cookie from a request. Accepts a `Headers` object,
  * anything with a `.headers` (e.g. `Request`), or the raw `Cookie`
  * header string. Returns `undefined` when absent or malformed.
+ *
+ * Throws {@link TypeError} on a shape it does not accept - notably a
+ * Node/Express request, whose `headers` is a plain record. "I was
+ * handed something I don't understand" must not be indistinguishable
+ * from "this request carried no token".
  */
 export function readTokenCookie(
-	source: Headers | { headers: Headers } | string | null | undefined,
+	source: HeaderSource,
 	name: string = DEFAULT_COOKIE_NAME
 ): string | undefined {
-	let cookieHeader: string | null | undefined;
-	if (typeof source === "string") {
-		cookieHeader = source;
-	} else if (source instanceof Headers) {
-		cookieHeader = source.get("cookie");
-	} else if (typeof source === "object" && source !== null && source.headers instanceof Headers) {
-		cookieHeader = source.headers.get("cookie");
-	}
+	const cookieHeader = readHeaderValue(source, "cookie", "readTokenCookie");
 	if (typeof cookieHeader !== "string" || cookieHeader.length > 16384) {
 		return undefined;
 	}

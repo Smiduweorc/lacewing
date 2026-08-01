@@ -7,6 +7,7 @@
  */
 
 import { BearerParseFailed } from "../util/errors.js";
+import { readHeaderValue, type HeaderSource } from "./source.js";
 
 // RFC 6750 credentials: exact-case scheme, a single SP, one token68.
 const BEARER = /^Bearer ([A-Za-z0-9\-._~+/]+=*)$/;
@@ -20,18 +21,13 @@ const MAX_HEADER_LENGTH = 16384;
  *
  * Note: when multiple `Authorization` headers were sent, `Headers`
  * joins them with `", "` - which this parser rejects, by design.
+ *
+ * A shape this library does not accept - notably a Node/Express
+ * request, whose `headers` is a plain record - throws {@link TypeError}
+ * rather than the misleading "missing header" it used to report.
  */
-export function parseBearer(
-	source: Headers | { headers: Headers } | string | null | undefined
-): string {
-	let value: string | null | undefined;
-	if (typeof source === "string") {
-		value = source;
-	} else if (source instanceof Headers) {
-		value = source.get("authorization");
-	} else if (typeof source === "object" && source !== null && source.headers instanceof Headers) {
-		value = source.headers.get("authorization");
-	}
+export function parseBearer(source: HeaderSource): string {
+	const value = readHeaderValue(source, "authorization", "parseBearer");
 	if (typeof value !== "string" || value.length === 0) {
 		throw new BearerParseFailed("Missing Authorization header");
 	}

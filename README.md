@@ -208,6 +208,18 @@ the `", "`-joined value `Headers` produces when a request carried two
 cookie name appears twice, the servers disagree about whether the first or the
 last duplicate wins, and cookie shadowing is built on that disagreement.
 
+Both readers take WHATWG `Headers` (or anything carrying them, like `Request`),
+or the raw header string. Node-style frameworks - Express, Fastify, Koa - hand
+you a plain object instead, so convert once at the edge; a shape the readers
+don't accept throws rather than reading as "no token":
+
+```ts
+const headers = new Headers(req.headers as Record<string, string>);
+const fromCookie = readTokenCookie(headers);
+
+res.setHeader("Set-Cookie", buildTokenCookie(token)); // the response side is just a string
+```
+
 ### Access vs refresh (the cookbook)
 
 The single most common token-confusion bug is letting a refresh token buy API
