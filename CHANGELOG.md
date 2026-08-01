@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.2] - 2026-08-01
+
+### Bug Fixes
+
+- Distinguish an unsupported header source from an absent header
+
+### Documentation
+
+- Added quick start guide
+
+### Miscellaneous Tasks
+
+- Create SECURITY.md for security policy
+- Added quick start to typedoc
+
 ## [1.0.1] - 2026-07-29
 
 ### Bug Fixes
