@@ -28,6 +28,11 @@ Instead of exposing low-level primitives and trusting you to compose them correc
 npm install lacewing
 ```
 
+[Getting started](./GETTING-STARTED.md) walks through adopting Lacewing in a
+real service: keys, profiles, transport, refresh tokens, revocation, key
+rotation, and a migration path from `jsonwebtoken`. The rest of this README is
+the pitch and the reference.
+
 ## Quick start
 
 The complete lifecycle (generate a key, sign, define a profile once, verify everywhere):
