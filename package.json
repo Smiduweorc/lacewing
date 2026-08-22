@@ -51,20 +51,20 @@
 		"url": "git+https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/lacewing.git"
 	},
 	"devDependencies": {
-		"@commitlint/cli": "^21.2.1",
-		"@commitlint/config-conventional": "^21.2.0",
+		"@commitlint/cli": "^21.2.2",
+		"@commitlint/config-conventional": "^21.2.2",
 		"@eslint/js": "^10.0.1",
-		"@types/node": "^26.1.1",
-		"eslint": "^10.8.0",
+		"@types/node": "^26.2.0",
+		"eslint": "^10.9.0",
 		"fast-check": "^4.9.0",
 		"git-cliff": "^2.13.1",
 		"lefthook": "^2.1.10",
-		"tsx": "^4.23.1",
+		"tsx": "^4.23.12",
 		"typedoc": "^0.28.20",
 		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.65.0"
+		"typescript-eslint": "^8.67.0"
 	},
 	"dependencies": {
-		"jose": "^6.2.4"
+		"jose": "^6.2.10"
 	}
 }
