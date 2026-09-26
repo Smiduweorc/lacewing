@@ -26,7 +26,8 @@ import {
 export type KeyMaterial = StaticJWK | string | Uint8Array | CryptoKey;
 
 function expectedWebCryptoName(alg: string, info: AlgorithmInfo): string {
-	if (alg === "EdDSA") return "Ed25519";
+	// Both `EdDSA` and `Ed25519` name the one OKP curve in the registry.
+	if (info.kty === "OKP") return "Ed25519";
 	if (info.kty === "EC") return "ECDSA";
 	if (info.kty === "oct") return "HMAC";
 	// RSA: PS* uses RSA-PSS; legacy RS* uses PKCS#1 v1.5.

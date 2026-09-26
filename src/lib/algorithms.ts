@@ -6,6 +6,10 @@
  * one-entry change here (cryptographic agility, §3.2.4). Legacy interop
  * algorithms can only enter through `registerLegacyAlgorithm`, which is
  * reachable exclusively via the explicit `legacy/` imports.
+ *
+ * Entries are frozen because `getAlgorithmProperties` is public through
+ * `lacewing/extension`: a mutable entry handed to another package would let
+ * it lower `minKeyBits` for every key Lacewing imports afterwards.
  */
 
 import { AlgorithmNotAllowed } from "../util/errors.js";
@@ -24,6 +28,9 @@ export interface AlgorithmInfo {
 
 const CORE_ALGORITHMS: readonly AlgorithmInfo[] = [
 	{ name: "EdDSA", kty: "OKP", crv: "Ed25519", minKeyBits: 256 },
+	// RFC 9864's fully-specified name for the same Ed25519 signature. Some
+	// clients (oauth4webapi among them) only ever write this one.
+	{ name: "Ed25519", kty: "OKP", crv: "Ed25519", minKeyBits: 256 },
 	{ name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 },
 	{ name: "ES384", kty: "EC", crv: "P-384", minKeyBits: 384 },
 	{ name: "ES512", kty: "EC", crv: "P-521", minKeyBits: 521 },
@@ -37,7 +44,7 @@ const CORE_ALGORITHMS: readonly AlgorithmInfo[] = [
 ];
 
 const registry = new Map<string, AlgorithmInfo>(
-	CORE_ALGORITHMS.map((info) => [info.name, info])
+	CORE_ALGORITHMS.map((info) => [info.name, Object.freeze(info)])
 );
 
 /** Type guard: is this exact string an allowed algorithm? Case sensitive. */
@@ -75,6 +82,6 @@ export function registerLegacyAlgorithm(info: AlgorithmInfo): void {
 		throw new AlgorithmNotAllowed("Algorithm 'none' is not allowed");
 	}
 	if (!registry.has(info.name)) {
-		registry.set(info.name, info);
+		registry.set(info.name, Object.freeze({ ...info }));
 	}
 }

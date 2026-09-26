@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { generateKeyPair as joseGenerateKeyPair, SignJWT as JoseSignJWT } from "jose";
 import { enableLegacyRSA } from "../../../src/legacy/rsa.js";
-import { isValidAlgorithm } from "../../../src/lib/algorithms.js";
+import { getAlgorithmProperties, isValidAlgorithm } from "../../../src/lib/algorithms.js";
 import { importKey } from "../../../src/key/import.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { jwtVerify } from "../../../src/jwt/verify.js";
@@ -55,4 +55,16 @@ test("[8725-3.2.3] the whole RS* family requires the explicit opt-in, then inter
 test("[8725-3.2.3] the rs256 backwards-compat entry still works", async () => {
 	const { enableLegacyRS256 } = await import("../../../src/legacy/rs256.js");
 	assert.equal(typeof enableLegacyRS256, "function");
+});
+
+test("[LW-ext.1] legacy entries are frozen once registered, like the core ones", () => {
+	enableLegacyRSA();
+	for (const alg of ["RS256", "RS384", "RS512"]) {
+		const info = getAlgorithmProperties(alg);
+		assert.equal(Object.isFrozen(info), true, alg);
+		assert.throws(() => {
+			(info as { minKeyBits: number }).minKeyBits = 512;
+		}, TypeError);
+		assert.equal(getAlgorithmProperties(alg).minKeyBits, 2048);
+	}
 });

@@ -54,6 +54,7 @@
 		{ "id": "LW-enc.1", "level": "MUST", "mechanism": "design", "summary": "Encrypted-JWT (JWE) algorithms are curated: none, RSA1_5, RSA-OAEP-SHA1 and PBES2* are unrepresentable, and a dir key must match its content-encryption size." },
 		{ "id": "LW-enc.2", "level": "MUST", "mechanism": "runtime", "summary": "Decryption uses only the profile's allowlisted key-management (alg) and content-encryption (enc) algorithms; the token header never decides." },
 		{ "id": "LW-enc.3", "level": "MUST", "mechanism": "runtime", "summary": "Encrypted tokens carry the same claim discipline (typ/iss/aud/exp, unique jti, lifetime cap), enforced on encrypt and validated on decrypt." },
-		{ "id": "LW-enc.4", "level": "MUST", "mechanism": "design", "summary": "JWS and JWE never cross over: a JWS handed to jwtDecrypt and a JWE handed to jwtVerify are both rejected." }
+		{ "id": "LW-enc.4", "level": "MUST", "mechanism": "design", "summary": "JWS and JWE never cross over: a JWS handed to jwtDecrypt and a JWE handed to jwtVerify are both rejected." },
+		{ "id": "LW-ext.1", "level": "MUST", "mechanism": "design", "summary": "The lacewing/extension subpath is read-only policy: registry entries are frozen, and nothing that adds to the registry or weakens header validation is reachable through it." }
 	]
 }
