@@ -11,6 +11,7 @@ import { SetAlg } from "../../../src/types.js";
 
 const EXPECTED = [
 	"EdDSA",
+	"Ed25519",
 	"ES256",
 	"ES384",
 	"ES512",
@@ -71,4 +72,27 @@ test("algorithm properties bind key types correctly", () => {
 	assert.equal(getAlgorithmProperties("ES256").crv, "P-256");
 	assert.equal(getAlgorithmProperties("PS256").kty, "RSA");
 	assert.equal(getAlgorithmProperties("HS384").minKeyBits, 384);
+});
+
+test("Ed25519 (RFC 9864) pairs with exactly the key EdDSA pairs with", () => {
+	const eddsa = getAlgorithmProperties("EdDSA");
+	const ed25519 = getAlgorithmProperties("Ed25519");
+	assert.equal(ed25519.name, "Ed25519");
+	assert.equal(ed25519.kty, "OKP");
+	assert.equal(ed25519.crv, "Ed25519");
+	assert.equal(ed25519.minKeyBits, 256);
+	assert.deepEqual({ ...ed25519, name: "EdDSA" }, { ...eddsa });
+	assert.equal(isValidAlgorithm("ed25519"), false);
+});
+
+test("[LW-ext.1] registry entries cannot be modified through a lookup", () => {
+	for (const alg of EXPECTED) {
+		const info = getAlgorithmProperties(alg);
+		const bits = info.minKeyBits;
+		assert.equal(Object.isFrozen(info), true, alg);
+		assert.throws(() => {
+			(info as { minKeyBits: number }).minKeyBits = 0;
+		}, TypeError);
+		assert.equal(getAlgorithmProperties(alg).minKeyBits, bits);
+	}
 });
