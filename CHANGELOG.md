@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-09-26
+
+### Features
+
+- Export parseJsonObject, the strict JSON reading tokens get
+
 ## [1.1.0] - 2026-09-26
 
 ### Bug Fixes
