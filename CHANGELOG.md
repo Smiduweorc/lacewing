@@ -2,6 +2,59 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-09-26
+
+### Bug Fixes
+
+- Corrected docs ignore
+
+### Features
+
+- Add Ed25519 under its RFC 9864 name and freeze registry entries
+- Add the read-only lacewing/extension subpath
+
+### Miscellaneous Tasks
+
+- Bump tsx from 4.23.1 to 4.23.5
+- Bump typescript-eslint from 8.65.0 to 8.66.0
+- Bump tsx from 4.23.5 to 4.23.9
+- Bump eslint from 10.8.0 to 10.8.1
+- Bump tsx from 4.23.9 to 4.23.11
+- Bump @types/node from 26.1.2 to 26.2.0
+- Bump tsx from 4.23.11 to 4.23.12
+- Bump typescript-eslint from 8.66.0 to 8.67.0
+- Bump @commitlint/cli from 21.2.1 to 21.2.2
+- Bump @commitlint/config-conventional
+- Bump typescript-eslint from 8.67.0 to 8.68.0
+- Bump @types/node from 26.2.0 to 26.3.0
+- Bump eslint from 10.9.0 to 10.9.1
+- Bump @types/node from 26.3.0 to 26.4.0
+- Bump lefthook from 2.1.10 to 2.1.12
+- Bump tsx from 4.23.12 to 4.23.13
+- Bump typescript-eslint from 8.68.0 to 8.69.0
+- Bump @types/node from 26.4.0 to 26.4.1
+- Bump eslint from 10.9.1 to 10.10.0
+- Bump typescript-eslint from 8.69.0 to 8.70.0
+- Bump @types/node from 26.4.1 to 26.5.0
+- Bump @types/node from 26.5.0 to 26.5.1
+- Bump fast-check from 4.9.0 to 4.10.0
+- Bump lefthook from 2.1.12 to 2.1.14
+- Added long overdue document
+- Bump fast-check from 4.10.0 to 4.10.1
+- Bump git-cliff from 2.13.1 to 2.14.2
+- Bump @types/node from 26.5.1 to 26.6.2
+- Bump eslint from 10.10.0 to 10.11.0
+- Bump @commitlint/config-conventional
+- Bump @commitlint/cli from 21.2.2 to 21.2.3
+- Bump fast-check from 4.10.1 to 4.10.2
+- Bump tsx from 4.23.13 to 4.23.15
+- Bump typescript-eslint from 8.70.0 to 8.70.1
+- Adjusted dist dir with more strictness
+
+### Testing
+
+- Check the built package through its exports map
+
 ## [1.0.2] - 2026-08-01
 
 ### Bug Fixes
