@@ -414,6 +414,42 @@ import { enableLegacyRSA } from "lacewing/legacy/rsa"; // RS256 + RS384 + RS512
 
 Prefer `PS256`/`EdDSA` everywhere you control both sides.
 
+### Ed25519 has two names
+
+`EdDSA` and `Ed25519` are the same signature over the same key. `Ed25519` is
+the fully-specified name from [RFC 9864](https://www.rfc-editor.org/rfc/rfc9864),
+and some issuers and clients (oauth4webapi, for one) write only that one. Both
+are in the registry, as two entries, and Lacewing does not treat them as
+aliases:
+
+- A profile accepts the names you list. `algorithms: ["EdDSA"]` refuses a
+  token whose header says `Ed25519`; list both if your issuer might send
+  either.
+- A key is bound to the name it was imported under. A key imported for
+  `EdDSA` does not verify an `Ed25519` token, even with both allowlisted.
+  Import it once per name, or use a JWKS entry with no `alg`, which serves
+  both.
+
+### Building on Lacewing: `lacewing/extension`
+
+For packages that add a check on top of a Lacewing profile and must agree with
+Lacewing about what a valid algorithm or duration is. It is covered by semver
+like the root export, and it is read-only:
+
+```ts
+import { getAlgorithmProperties, parseDuration, readHeaderValue } from "lacewing/extension";
+
+getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
+parseDuration("15m");            // 900, as DurationSeconds
+readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
+```
+
+Registry entries come back frozen, so nothing that imports them can lower a
+key-size floor for the rest of the process. Adding to the registry stays
+behind the `legacy/` imports, and header validation is not exported: it
+refuses an embedded `jwk`, which is right for a token and wrong for a format
+that carries its own key, so each format owns its own header rules.
+
 ## Why Lacewing exists
 
 Lacewing is not trying to compete with general-purpose JWT libraries. It started as the hardened setup I kept rebuilding for my own projects, packaged so I'd stop rebuilding it.

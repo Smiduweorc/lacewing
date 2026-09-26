@@ -18,6 +18,9 @@ export function parseDuration(value: number | string): DurationSeconds {
 	if (typeof value === "number") {
 		return toSeconds(value);
 	}
+	if (typeof value !== "string") {
+		throw new TypeError("Duration must be a number of seconds or a string like \"15m\"");
+	}
 	const match = DURATION.exec(value.trim());
 	if (match === null) {
 		throw new TypeError(

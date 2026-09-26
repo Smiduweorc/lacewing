@@ -13,6 +13,10 @@
 			"types": "./dist/types/index.d.ts",
 			"default": "./dist/index.js"
 		},
+		"./extension": {
+			"types": "./dist/types/src/extension.d.ts",
+			"default": "./dist/src/extension.js"
+		},
 		"./legacy/rs256": {
 			"types": "./dist/types/src/legacy/rs256.d.ts",
 			"default": "./dist/src/legacy/rs256.js"
@@ -28,6 +32,7 @@
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"test": "node --import tsx --test \"tests/**/*.test.ts\"",
+		"test:dist": "npm run build && node --test \"tests/dist/*.test.js\"",
 		"test:tap": "node --import tsx --test --test-reporter=tap \"tests/**/*.test.ts\"",
 		"compliance": "node --import tsx tools/run-compliance.ts",
 		"demo": "node --import tsx examples/demo.ts",
