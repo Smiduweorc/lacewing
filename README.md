@@ -433,14 +433,15 @@ aliases:
 ### Building on Lacewing: `lacewing/extension`
 
 For packages that add a check on top of a Lacewing profile and must agree with
-Lacewing about what a valid algorithm or duration is. It is covered by semver
-like the root export, and it is read-only:
+Lacewing about what a valid algorithm, duration or JWS segment is. It is
+covered by semver like the root export, and it is read-only:
 
 ```ts
-import { getAlgorithmProperties, parseDuration, readHeaderValue } from "lacewing/extension";
+import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } from "lacewing/extension";
 
 getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
 parseDuration("15m");            // 900, as DurationSeconds
+parseJsonObject(text, "header"); // a plain object, or JWTInvalid; a member named twice is refused
 readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
 ```
 

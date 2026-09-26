@@ -7,14 +7,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import * as extension from "../../src/extension.js";
-import { AlgorithmNotAllowed } from "../../src/util/errors.js";
+import { AlgorithmNotAllowed, JWTInvalid } from "../../src/util/errors.js";
 
-const { getAlgorithmProperties, parseDuration, readHeaderValue } = extension;
+const { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } = extension;
 
-test("[LW-ext.1] the extension exports exactly the three read-only helpers", () => {
+test("[LW-ext.1] the extension exports exactly the four read-only helpers", () => {
 	assert.deepEqual(Object.keys(extension).sort(), [
 		"getAlgorithmProperties",
 		"parseDuration",
+		"parseJsonObject",
 		"readHeaderValue",
 	]);
 });
@@ -113,4 +114,46 @@ test("readHeaderValue throws a TypeError naming the calling helper for a Node-st
 		() => readHeaderValue(nodeStyle as unknown as Headers, "dpop", "verifyThing"),
 		(error: unknown) => error instanceof TypeError && error.message.startsWith("verifyThing()")
 	);
+});
+
+test("parseJsonObject returns a plain object parsed from JSON text", () => {
+	assert.deepEqual(parseJsonObject("{\"htm\":\"GET\",\"cnf\":{\"jkt\":\"x\"},\"list\":[1,{\"a\":2}]}", "payload"), {
+		htm: "GET",
+		cnf: { jkt: "x" },
+		list: [1, { a: 2 }],
+	});
+});
+
+test("parseJsonObject refuses a member name that appears twice, at any depth and in any spelling", () => {
+	const cases = [
+		"{\"alg\":\"ES256\",\"alg\":\"none\"}",
+		"{\"jwk\":{\"kty\":\"EC\",\"kty\":\"RSA\"}}",
+		"{\"a\":[{\"b\":1,\"b\":2}]}",
+		"{\"htu\":\"x\",\"\\u0068tu\":\"y\"}",
+	];
+	for (const text of cases) {
+		assert.throws(
+			() => parseJsonObject(text, "header"),
+			(error: unknown) =>
+				error instanceof JWTInvalid && /duplicate JSON key/.test(error.message),
+			text
+		);
+	}
+});
+
+test("parseJsonObject allows the same name in sibling objects and as a value", () => {
+	assert.deepEqual(parseJsonObject("{\"a\":{\"k\":1},\"b\":{\"k\":2},\"c\":\"k\"}", "payload"), {
+		a: { k: 1 },
+		b: { k: 2 },
+		c: "k",
+	});
+});
+
+test("parseJsonObject refuses JSON that is not an object, and text that is not JSON", () => {
+	for (const text of ["[]", "[{}]", "null", "1", "\"str\"", "true"]) {
+		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+	}
+	for (const text of ["", "{", "{'a':1}", "{\"a\":1,}", "\uFEFF{}"]) {
+		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+	}
 });

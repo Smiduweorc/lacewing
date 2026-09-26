@@ -25,13 +25,16 @@ test("every exports entry imports by package name", async () => {
 	}
 });
 
-test("lacewing/extension exposes exactly its three helpers, working", async () => {
+test("lacewing/extension exposes exactly its four helpers, working", async () => {
 	const extension = await import("lacewing/extension");
 	assert.deepEqual(Object.keys(extension).sort(), [
 		"getAlgorithmProperties",
 		"parseDuration",
+		"parseJsonObject",
 		"readHeaderValue",
 	]);
+	assert.deepEqual(extension.parseJsonObject("{\"a\":1}", "t"), { a: 1 });
+	assert.throws(() => extension.parseJsonObject("{\"a\":1,\"a\":2}", "t"), { code: "JWT_INVALID" });
 	assert.equal(extension.parseDuration("15m"), 900);
 	assert.equal(extension.getAlgorithmProperties("Ed25519").crv, "Ed25519");
 	assert.equal(Object.isFrozen(extension.getAlgorithmProperties("ES256")), true);
