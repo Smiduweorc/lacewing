@@ -12,7 +12,7 @@
  *  | | access | refresh |
  *  |---|---|---|
  *  | `typ` | `at+jwt` | `rt+jwt` |
- *  | audience | the API | the auth server's token endpoint |
+ *  | audience | the API | the auth server's token endpoint (your choice, not checked) |
  *  | lifetime | minutes (default 10m) | days (default 30d) |
  *  | key source | usually a public JWKS | usually a private, server-only key |
  *  | revocation | optional | **strongly recommended** |
@@ -74,8 +74,9 @@ export function accessTokenProfile(options: TokenProfileOptions): ExpectedJwtPro
 }
 
 /**
- * A refresh-token profile: long-lived, audience-scoped to the *auth server*
- * (never the API), and pinned to `typ: "rt+jwt"`. Pass a `revocation` store -
+ * A refresh-token profile: long-lived and pinned to `typ: "rt+jwt"`. Give it
+ * the *auth server* as its audience, never the API; nothing here can check
+ * that for you, because the profile has never seen your API's audience. Pass a `revocation` store -
  * a long-lived token you cannot revoke is a long-lived incident.
  */
 export function refreshTokenProfile(options: TokenProfileOptions): ExpectedJwtProfile {

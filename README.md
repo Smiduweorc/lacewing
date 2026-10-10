@@ -3,7 +3,9 @@
 
 **Lacewing is an opinionated JWT library that makes common JWT security mistakes impossible by construction.**
 
-Instead of exposing low-level primitives and trusting you to compose them correctly, Lacewing provides secure verification profiles, safe defaults, mandatory claim validation, built-in revocation support, secure cookie helpers, and a curated algorithm set. Everything [RFC 8725 (JWT Best Current Practices)](https://datatracker.ietf.org/doc/html/rfc8725) says an application MUST or SHOULD do is enforced by the type system, enforced at runtime, or impossible to express.
+Instead of exposing low-level primitives and trusting you to compose them correctly, Lacewing provides secure verification profiles, safe defaults, mandatory claim validation, built-in revocation support, secure cookie helpers, and a curated algorithm set. Everything [RFC 8725 (JWT Best Current Practices)](https://datatracker.ietf.org/doc/html/rfc8725) says an application MUST or SHOULD do is enforced by the type system, enforced at runtime, or impossible to express, except where only your application has the facts: keeping two of your own profiles apart (give each kind of token its own `typ`), and choosing a strong HMAC secret (use `generateSecret()`; the entropy check is a heuristic).
+
+**The signature maths is not ours, and that shows in the RFC compliance.** Lacewing enforces the *policy* RFC 8725 asks for. The ECDSA and EdDSA signing and verifying, curve point checks, and nonce generation are done by [jose](https://github.com/panva/jose) on top of Node's WebCrypto (OpenSSL). Lacewing does not control or re-check them. For example, ECDSA nonces are whatever Node's OpenSSL build produces (randomised, not RFC 6979 deterministic), and low-level primitive conformance is only as good as your Node version. The compliance suite tests that Lacewing calls these primitives correctly, not the primitives themselves.
 
 **Batteries loaded (RFC 8725).** Out of the box:
 
@@ -152,12 +154,18 @@ keys: {
 
 Selection is exact: the token's `kid` (and its algorithm's key type and curve)
 has to single out one key. Two keys that both match with no `kid` to tell them
-apart is treated as your mistake, not something to guess at.
+apart is treated as your mistake, not something to guess at. The same goes for
+a key with no `alg`: if the profile allows several algorithms that key could
+serve (say `PS256` and `PS512` for one RSA key), it is refused rather than
+used under all of them. Set `alg` on the key. EC and OKP keys are exempt,
+because their curve already names the algorithm.
 
 And if your keys live somewhere less ordinary (an HSM, a secrets manager, a
 database), anything with a `getVerificationKey(header)` method is a valid `keys`
 value. That's the escape hatch; the two built-in sources are just the ones
-you'll reach for most.
+you'll reach for most. It is still held to the same rules: the `alg` it returns
+must be the token's, and a raw HMAC secret it returns goes through the same
+strength check as `importKey`.
 
 ### Sign
 

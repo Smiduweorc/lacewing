@@ -153,6 +153,11 @@ secret fails at startup instead of producing weak signatures:
 await importKey("my-secret-password-123", "HS256"); // throws EntropyCheckFailed
 ```
 
+A string secret must be random bytes written as hex or base64(url), long
+enough to carry the algorithm's key size: for HS256 that is 64 hex or 43
+base64 characters. Spaces and punctuation are refused, which also catches
+random secrets from generators that mix in symbols.
+
 If that fires on a secret you already use, replace the secret.
 `generateSecret("HS256")` produces one at the algorithm's minimum size.
 
