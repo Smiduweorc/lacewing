@@ -61,3 +61,48 @@ test("a megabyte of printable bytes is screened without blowing the stack", () =
 	assert.equal(isPasswordLike(huge), true);
 	assert.throws(() => validateHMACSecret(huge, "HS256"), EntropyCheckFailed);
 });
+
+test("[8725-3.5.2] passphrases and keyboard walks are rejected even when long enough", () => {
+	const humanChosen = [
+		"correct-horse-battery-staple-9!-Zq",
+		"MyDogSpotLovesChasingSquirrels2024!!",
+		"qazwsxedcrfvtgbyhnujmikolpQAZWSXEDqazwsxedcrfvtgb",
+		"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"deadbeef".repeat(8),
+		"abcdefghijk".repeat(4),
+	];
+	for (const secret of humanChosen) {
+		assert.throws(() => validateHMACSecret(encoder.encode(secret), "HS256"), EntropyCheckFailed, `expected rejection: ${secret}`);
+	}
+});
+
+test("[8725-3.5.2] a printable secret is measured by the bits its encoding carries, not its byte count", () => {
+	const random = globalThis.crypto.getRandomValues(new Uint8Array(32));
+	const hex = Buffer.from(random).toString("hex");
+	// 64 hex characters carry 256 bits: exactly HS256, one character short is not.
+	assert.doesNotThrow(() => validateHMACSecret(encoder.encode(hex), "HS256"));
+	assert.throws(() => validateHMACSecret(encoder.encode(hex.slice(0, 63)), "HS256"), EntropyCheckFailed);
+	// 32 hex characters were accepted before: 32 bytes long, but only 128 bits.
+	assert.throws(() => validateHMACSecret(encoder.encode(hex.slice(0, 32)), "HS256"), EntropyCheckFailed);
+	// 43 base64url characters carry 258 bits; 42 carry 252.
+	const b64 = Buffer.from(random).toString("base64url");
+	assert.doesNotThrow(() => validateHMACSecret(encoder.encode(b64), "HS256"));
+	assert.throws(() => validateHMACSecret(encoder.encode(b64.slice(0, 42)), "HS256"), EntropyCheckFailed);
+});
+
+test("[8725-3.5.2] secrets with spaces or punctuation are not an encoded random key and are rejected", () => {
+	const random = Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(48))).toString("base64url");
+	assert.throws(() => validateHMACSecret(encoder.encode(`${random}!`), "HS256"), EntropyCheckFailed);
+	assert.throws(() => validateHMACSecret(encoder.encode(`${random} x`), "HS256"), EntropyCheckFailed);
+});
+
+test("random hex and base64 keys are never flagged, over many samples", () => {
+	// The thresholds were tuned against a 7M-key sweep; this keeps a cheap
+	// regression check in the suite. The old 3.5 bits/byte floor failed here.
+	for (let i = 0; i < 20000; i++) {
+		const random = Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(32)));
+		for (const encoded of [random.toString("hex"), random.toString("hex").toUpperCase(), random.toString("base64"), random.toString("base64url")]) {
+			assert.doesNotThrow(() => validateHMACSecret(encoder.encode(encoded), "HS256"), encoded);
+		}
+	}
+});
