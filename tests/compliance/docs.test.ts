@@ -93,3 +93,14 @@ test("[LW-alg.1] the docs lead with asymmetric keys and caveat HMAC's shared-sec
 		"README must point beyond-single-service users at asymmetric keys + JWKS"
 	);
 });
+
+test("the README points readers at the published security advisories", () => {
+	assert.ok(README.includes("](./ADVISORIES.md)"), "README must link ADVISORIES.md");
+	const advisories = readFileSync(
+		join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ADVISORIES.md"),
+		"utf8"
+	);
+	for (const id of ["GHSA-x2q2-4jwp-wfgg", "GHSA-vwp5-4h2j-vhhq", "GHSA-gg54-pwrg-hjx7"]) {
+		assert.ok(advisories.includes(`## ${id}:`), `ADVISORIES.md must document ${id}`);
+	}
+});

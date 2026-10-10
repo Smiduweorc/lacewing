@@ -18,6 +18,14 @@ Instead of exposing low-level primitives and trusting you to compose them correc
 - **Payload hygiene scanning** at sign time (passwords, card numbers, PEM keys never leave in plaintext)
 - **Typed errors** with machine-readable codes and no attacker-facing oracle
 
+## Security advisories
+
+Lacewing has published security advisories, and one of them may apply to the
+version you run. **Read [ADVISORIES.md](./ADVISORIES.md) before you deploy or
+upgrade**: it lists every advisory with its affected versions, the release that
+fixes it, and a workaround. To report a vulnerability, see
+[SECURITY.md](./SECURITY.md).
+
 ## Requirements
 
 - Node **>= 24**
