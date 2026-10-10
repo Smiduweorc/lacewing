@@ -97,3 +97,11 @@ test("end-to-end: JWKS-backed profile verifies tokens and supports rotation by k
 	const verified = await jwtVerify(token, profile);
 	assert.equal(verified.payload.iss, "https://auth.example.com");
 });
+
+test("[8725-3.1.2] an EC key without alg stays usable under a multi-algorithm profile, because its curve pins the algorithm", async () => {
+	const ec = await generateKeyPair("ES256", { extractable: true });
+	const { alg: _alg, ...unbound } = { ...(await exportKeyJWK(ec.publicKey)), kid: "ec" } as StaticJWK;
+	const source = createLocalJWKSet({ keys: [unbound] });
+	const resolved = await source.getVerificationKey(header("ec", "ES256"), [toValidAlg("ES256"), toValidAlg("ES384"), toValidAlg("EdDSA")]);
+	assert.equal(resolved.alg, "ES256");
+});

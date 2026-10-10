@@ -19,6 +19,7 @@ import type {
 	KeySource,
 	ResolvedVerificationKey,
 	StaticJWK,
+	ValidAlg,
 } from "../types.js";
 
 const DEFAULT_CACHE_TTL_SECONDS = 300;
@@ -202,10 +203,13 @@ export function createRemoteJWKSet(
 	}
 
 	return {
-		async getVerificationKey(header: JwtHeader): Promise<ResolvedVerificationKey> {
+		async getVerificationKey(
+			header: JwtHeader,
+			allowedAlgorithms: readonly ValidAlg[]
+		): Promise<ResolvedVerificationKey> {
 			await ensureFresh();
 			try {
-				return await resolveFromJwks(cachedKeys as StaticJWK[], header, {
+				return await resolveFromJwks(cachedKeys as StaticJWK[], header, allowedAlgorithms, {
 					allowSymmetric: false,
 				});
 			} catch (error) {
@@ -216,7 +220,7 @@ export function createRemoteJWKSet(
 					Date.now() - lastAttemptMs >= cooldownMs;
 				if (!canRetry) throw error;
 				await refresh();
-				return resolveFromJwks(cachedKeys as StaticJWK[], header, {
+				return resolveFromJwks(cachedKeys as StaticJWK[], header, allowedAlgorithms, {
 					allowSymmetric: false,
 				});
 			}

@@ -28,6 +28,8 @@ import { decodeUTF8 } from "../lib/utf8.js";
 import { parseJsonObject } from "../lib/json.js";
 import { validateHeader } from "../lib/headers.js";
 import { validateClaims } from "../lib/claims.js";
+import { getAlgorithmProperties } from "../lib/algorithms.js";
+import { validateHMACSecret } from "../lib/entropy.js";
 import { buildRevocationContext } from "../revocation/store.js";
 import {
 	isLacewingKey,
@@ -57,7 +59,19 @@ async function resolveKey(
 		}
 		return { alg: header.alg, key: profile.keys.key };
 	}
-	return profile.keys.getVerificationKey(header, profile.alg);
+	// A custom source is held to the same binding as the built-in ones: the
+	// algorithm it resolved must be the token's, and a raw HMAC secret goes
+	// through the same strength check as `importKey` (§3.1, §3.5).
+	const resolved = await profile.keys.getVerificationKey(header, profile.alg);
+	if ((resolved.alg as string) !== (header.alg as string)) {
+		throw new AlgorithmNotAllowed(
+			"Token algorithm does not match the key source's resolved algorithm"
+		);
+	}
+	if (resolved.key instanceof Uint8Array && getAlgorithmProperties(header.alg).kty === "oct") {
+		validateHMACSecret(resolved.key, header.alg);
+	}
+	return resolved;
 }
 
 /**

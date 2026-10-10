@@ -236,3 +236,17 @@ test("[LW-jwks.4] symmetric keys are refused from a remote JWKS", async () => {
 	const hs: JwtHeader = { alg: toValidAlg("HS256"), typ: "at+jwt", kid: "shared" };
 	await assert.rejects(source.getVerificationKey(hs, [toValidAlg("HS256")]), JWKSNoMatchingKey);
 });
+
+test("[8725-3.1.2] a remote RSA key without alg is refused when the profile allows several RSA algorithms", async () => {
+	const rsa = await generateKeyPair("PS256", { extractable: true });
+	const { alg: _alg, ...unbound } = { ...(await exportKeyJWK(rsa.publicKey)), kid: "rsa" } as StaticJWK;
+	const { fetch } = scriptedFetch([() => jwksResponse([unbound])]);
+	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 300 });
+	const rsaHeader: JwtHeader = { alg: toValidAlg("PS512"), typ: "at+jwt", kid: "rsa" };
+	await assert.rejects(
+		source.getVerificationKey(rsaHeader, [toValidAlg("PS256"), toValidAlg("PS512")]),
+		JWKSNoMatchingKey
+	);
+	const resolved = await source.getVerificationKey(rsaHeader, [toValidAlg("PS512")]);
+	assert.equal(resolved.alg, "PS512");
+});

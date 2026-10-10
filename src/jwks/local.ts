@@ -22,7 +22,23 @@ import type {
 	ResolvedVerificationKey,
 	StaticJWK,
 	StaticJWKS,
+	ValidAlg,
 } from "../types.js";
+
+/**
+ * Whether a JWK without an `alg` member could serve more than one of the
+ * profile's algorithms. A curve pins EC/OKP keys to one algorithm, but an
+ * RSA or `oct` key fits every allowlisted algorithm of its type, and using
+ * one key under several algorithms is what §3.1 forbids.
+ */
+function isUnbound(jwk: StaticJWK, allowed: readonly ValidAlg[]): boolean {
+	if (jwk.alg !== undefined) return false;
+	const sameFamily = allowed.filter((alg) => {
+		const info = getAlgorithmProperties(alg);
+		return info.kty === jwk.kty && info.crv === undefined;
+	});
+	return sameFamily.length > 1;
+}
 
 function isCandidate(jwk: StaticJWK, header: JwtHeader): boolean {
 	const info = getAlgorithmProperties(header.alg);
@@ -47,14 +63,21 @@ export interface ResolveFromJwksOptions {
 export async function resolveFromJwks(
 	keys: readonly StaticJWK[],
 	header: JwtHeader,
+	allowed: readonly ValidAlg[],
 	options: ResolveFromJwksOptions = {}
 ): Promise<ResolvedVerificationKey> {
 	const allowSymmetric = options.allowSymmetric ?? true;
-	const candidates = keys.filter(
+	const matching = keys.filter(
 		(jwk) => isCandidate(jwk, header) && (allowSymmetric || jwk.kty !== "oct")
 	);
+	const candidates = matching.filter((jwk) => !isUnbound(jwk, allowed));
 	if (candidates.length === 0) {
-		throw new JWKSNoMatchingKey("No key in the JWKS matches this token");
+		throw new JWKSNoMatchingKey(
+			matching.length === 0
+				? "No key in the JWKS matches this token"
+				: "A matching JWKS key has no alg and the profile allows several " +
+						"algorithms for its key type; set alg on the key"
+		);
 	}
 	if (candidates.length > 1) {
 		throw new JWKSNoMatchingKey(
@@ -113,8 +136,11 @@ export function validateJwksShape(jwks: unknown): StaticJWK[] {
 export function createLocalJWKSet(jwks: StaticJWKS): KeySource {
 	const keys = validateJwksShape(jwks);
 	return {
-		getVerificationKey(header: JwtHeader): Promise<ResolvedVerificationKey> {
-			return resolveFromJwks(keys, header);
+		getVerificationKey(
+			header: JwtHeader,
+			allowedAlgorithms: readonly ValidAlg[]
+		): Promise<ResolvedVerificationKey> {
+			return resolveFromJwks(keys, header, allowedAlgorithms);
 		},
 	};
 }
