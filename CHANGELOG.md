@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.2] - 2026-10-15
+
+### Bug Fixes
+
+- Excluded guide markdwon file from npmignore
+
+### Security
+
+- List published security advisories and point the readme at them
+
 ## [1.2.1] - 2026-10-10
 
 ### Bug Fixes
