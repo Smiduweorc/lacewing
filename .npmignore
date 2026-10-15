@@ -31,3 +31,6 @@
 # CI and editor config
 /.github/
 /.vscode/
+
+GETTING-STARTED.md
+CHANGELOG.md
