@@ -467,6 +467,19 @@ behind the `legacy/` imports, and header validation is not exported: it
 refuses an embedded `jwk`, which is right for a token and wrong for a format
 that carries its own key, so each format owns its own header rules.
 
+## Known quirks
+
+- **`x5t` in a header rejects the token.** Lacewing refuses `jku`, `x5u`,
+  `jwk`, `x5c`, `x5t`, `zip` and `crit` outright rather than ignoring them,
+  and there is no option to allow one. Microsoft Entra ID puts `x5t` (the
+  same value as `kid`) on its v1.0 access tokens, and an API registration
+  gets v1.0 tokens unless it asks otherwise, so Lacewing cannot verify Entra
+  access tokens out of the box. Its v2.0 access tokens carry only `kid`: set
+  `api.requestedAccessTokenVersion` to `2` in the app manifest. See
+  Microsoft's
+  [access token claims reference](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference#header-claims)
+  and [app manifest reference](https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest#api-attribute).
+
 ## Why Lacewing exists
 
 Lacewing is not trying to compete with general-purpose JWT libraries. It started as the hardened setup I kept rebuilding for my own projects, packaged so I'd stop rebuilding it.
