@@ -53,7 +53,7 @@
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/lacewing.git"
+		"url": "git+https://github.com/Smiduweorc/lacewing.git"
 	},
 	"devDependencies": {
 		"@commitlint/cli": "^21.2.2",

@@ -656,4 +656,4 @@ Step 3 waits one token lifetime.
 `npm run demo` in the repository runs a live walkthrough where every
 rejection is a real thrown error. For the full API, see the
 [README](./README.md) and the generated
-[TypeDoc](https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/lacewing).
+[TypeDoc](https://github.com/Smiduweorc/lacewing).
