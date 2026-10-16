@@ -4,6 +4,7 @@ import { SignJWT } from "../../../src/jwt/sign.js";
 import { jwtVerify } from "../../../src/jwt/verify.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
+import { importKey } from "../../../src/key/import.js";
 import { MemoryRevocationStore } from "../../../src/revocation/memory.js";
 import {
 	AlgorithmNotAllowed,
@@ -14,7 +15,7 @@ import {
 	RevocationCheckFailed,
 } from "../../../src/util/errors.js";
 import type { ProfileOptions, TokenRevocationContext } from "../../../index.js";
-import { craftHmacToken, standardClaims } from "../../helpers.js";
+import { craftHmacToken, craftHmacTokenRaw, standardClaims } from "../../helpers.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 const secret = generateSecret("HS256");
@@ -195,4 +196,25 @@ test("custom claim validators run through the verify path", async () => {
 		.sign(privateKey);
 	await assert.doesNotReject(jwtVerify(good, profile));
 	await assert.rejects(jwtVerify(await signToken(), profile), JWTClaimValidationFailed);
+});
+
+// Raw bytes so the tokens below can be signed by hand with exact JSON text.
+const rawSecret = Uint8Array.from({ length: 32 }, (_, i) => (i * 37 + 11) & 0xff);
+const rawSecretKey = await importKey(rawSecret, "HS256");
+
+test("a correctly signed payload carrying an own __proto__ member is rejected", async () => {
+	const payload = JSON.stringify(standardClaims()).replace(/}$/, ",\"__proto__\":{\"isAdmin\":true}}");
+	const token = craftHmacTokenRaw(JSON.stringify({ alg: "HS256", typ: "at+jwt" }), payload, rawSecret);
+	await assert.rejects(jwtVerify(token, makeProfile({ algorithms: ["HS256"], keys: rawSecretKey })), {
+		name: "JWTInvalid",
+		code: "JWT_INVALID",
+		message: "Token payload contains the member name \"__proto__\", which can pollute object prototypes",
+	});
+	assert.equal(({} as Record<string, unknown>).isAdmin, undefined);
+});
+
+test("a correctly signed payload carrying constructor.prototype is rejected", async () => {
+	const payload = JSON.stringify(standardClaims()).replace(/}$/, ",\"ext\":{\"\\u0063onstructor\":{\"prototype\":{\"isAdmin\":true}}}}");
+	const token = craftHmacTokenRaw(JSON.stringify({ alg: "HS256", typ: "at+jwt" }), payload, rawSecret);
+	await assert.rejects(jwtVerify(token, makeProfile({ algorithms: ["HS256"], keys: rawSecretKey })), { code: "JWT_INVALID" });
 });

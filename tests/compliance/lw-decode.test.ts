@@ -7,6 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { Buffer } from "node:buffer";
 import { SignJWT, jwtVerify, unsafeDecode, JWTInvalid, type VerifiedJwt } from "../../index.js";
 import { AUDIENCE, ISSUER, hmac, hmacProfile } from "./_shared.js";
 
@@ -36,4 +37,10 @@ test("[LW-decode.1] unsafeDecode still refuses structurally malformed tokens", (
 	assert.throws(() => unsafeDecode("not-a-token"), JWTInvalid);
 	assert.throws(() => unsafeDecode("a.b"), JWTInvalid);
 	assert.throws(() => unsafeDecode(""), JWTInvalid);
+});
+
+test("[LW-decode.1] unsafeDecode refuses a __proto__ member name like any other malformed token", () => {
+	const header = Buffer.from("{\"alg\":\"EdDSA\",\"typ\":\"at+jwt\"}").toString("base64url");
+	const payload = Buffer.from("{\"sub\":\"user-42\",\"__proto__\":{\"isAdmin\":true}}").toString("base64url");
+	assert.throws(() => unsafeDecode(`${header}.${payload}.c2ln`), { name: "JWTInvalid", code: "JWT_INVALID" });
 });

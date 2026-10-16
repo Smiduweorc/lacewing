@@ -153,3 +153,14 @@ test("[strictness] non-canonical trailing bits are rejected in every JWE segment
 	// The header, the A256KW encrypted key and the tag always have slack.
 	assert.ok(exercised >= 3, `expected at least 3 malleable segments, exercised ${exercised}`);
 });
+
+test("a decrypted payload carrying an own __proto__ member is rejected", async () => {
+	const token = await new EncryptJWT("at+jwt", { contentEncryption: "A256GCM" })
+		.issuer(ISS).audience(AUD).subject("user-42").claim("__proto__", { isAdmin: true }).expiresIn("5m")
+		.encrypt(dir);
+	await assert.rejects(jwtDecrypt(token, profile(dir, ["dir"], ["A256GCM"])), {
+		name: "JWTInvalid",
+		code: "JWT_INVALID",
+		message: "Token payload contains the member name \"__proto__\", which can pollute object prototypes",
+	});
+});

@@ -457,7 +457,7 @@ import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue
 
 getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
 parseDuration("15m");            // 900, as DurationSeconds
-parseJsonObject(text, "header"); // a plain object, or JWTInvalid; a member named twice is refused
+parseJsonObject(text, "header"); // a plain object, or JWTInvalid; a member named twice, or __proto__/constructor/prototype, is refused
 readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
 ```
 

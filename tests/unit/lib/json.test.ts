@@ -50,3 +50,50 @@ test("non-objects are rejected before the duplicate scan", () => {
 	assert.throws(() => parseJsonObject("\"a string\"", "payload"), JWTInvalid);
 	assert.throws(() => parseJsonObject("not json", "payload"), JWTInvalid);
 });
+
+// Each of these is a path segment in a prototype-pollution gadget: a caller
+// that deep-merges the payload writes through `__proto__` or
+// `constructor.prototype` into Object.prototype.
+for (const name of ["__proto__", "constructor", "prototype"]) {
+	test(`rejects "${name}" as a top-level member name`, () => {
+		assert.throws(() => parseJsonObject(`{"sub":"user-42","${name}":{"isAdmin":true}}`, "payload"), {
+			name: "JWTInvalid",
+			code: "JWT_INVALID",
+			message: `Token payload contains the member name "${name}", which can pollute object prototypes`,
+		});
+	});
+
+	test(`rejects "${name}" as a member name nested in an object`, () => {
+		assert.throws(() => parseJsonObject(`{"a":{"b":{"${name}":1}}}`, "payload"), { code: "JWT_INVALID" });
+	});
+
+	test(`rejects "${name}" as a member name inside an array element`, () => {
+		assert.throws(() => parseJsonObject(`{"a":[1,{"${name}":1}]}`, "header"), { code: "JWT_INVALID" });
+	});
+
+	test(`accepts "${name}" as a string value`, () => {
+		assert.deepEqual(parseJsonObject(`{"a":"${name}","b":["${name}"]}`, "payload"), { a: name, b: [name] });
+	});
+}
+
+test("rejects __proto__ spelled entirely with unicode escapes", () => {
+	const escaped = "\\u005f\\u005f\\u0070\\u0072\\u006f\\u0074\\u006f\\u005f\\u005f";
+	assert.throws(() => parseJsonObject(`{"${escaped}":{"isAdmin":true}}`, "payload"), {
+		code: "JWT_INVALID",
+		message: "Token payload contains the member name \"__proto__\", which can pollute object prototypes",
+	});
+});
+
+test("rejects __proto__ with a single escaped character", () => {
+	assert.throws(() => parseJsonObject("{\"\\u005f_proto__\":{}}", "payload"), { code: "JWT_INVALID" });
+	assert.throws(() => parseJsonObject("{\"__prot\\u006F__\":{}}", "payload"), { code: "JWT_INVALID" });
+});
+
+test("rejects constructor with an escaped first letter", () => {
+	assert.throws(() => parseJsonObject("{\"a\":{\"\\u0063onstructor\":{\"prototype\":{}}}}", "payload"), { code: "JWT_INVALID" });
+});
+
+test("names that only contain or resemble a prototype key are accepted", () => {
+	const text = "{\"__proto\":1,\"proto__\":2,\"_proto_\":3,\"__PROTO__\":4,\"Constructor\":5,\"prototypes\":6,\"x__proto__\":7}";
+	assert.deepEqual(Object.keys(parseJsonObject(text, "payload")), ["__proto", "proto__", "_proto_", "__PROTO__", "Constructor", "prototypes", "x__proto__"]);
+});
