@@ -6,7 +6,7 @@
 
 import { generateKeyPair as joseGenerateKeyPair } from "jose";
 import { JWTError } from "../util/errors.js";
-import { getAlgorithmProperties } from "../lib/algorithms.js";
+import { resolveAlgorithm, type AlgorithmInfo } from "../lib/algorithms.js";
 import { createLacewingKey, SetAlg, type LacewingKey } from "../types.js";
 
 export interface GenerateKeyPairOptions {
@@ -18,22 +18,20 @@ export interface GenerateKeyPairOptions {
 }
 
 /**
- * Generate an asymmetric key pair, bound to `algorithm` (default EdDSA).
+ * Generate an asymmetric key pair, bound to `algorithm` (default EdDSA): a
+ * name from the default set, or a legacy descriptor from `lacewing/legacy/rsa`.
  */
 export async function generateKeyPair<const Alg extends string = "EdDSA">(
-	algorithm: Alg = "EdDSA" as Alg,
+	algorithm: Alg | AlgorithmInfo<Alg> = "EdDSA" as Alg,
 	options: GenerateKeyPairOptions = {}
 ): Promise<{ publicKey: LacewingKey<Alg>; privateKey: LacewingKey<Alg> }> {
-	const info = getAlgorithmProperties(algorithm);
+	const info = resolveAlgorithm(algorithm);
 	if (info.kty === "oct") {
-		throw new JWTError(
-			"KEY_TYPE_MISMATCH",
-			`${algorithm} is symmetric - use generateSecret() instead`
-		);
+		throw new JWTError("KEY_TYPE_MISMATCH", `${info.name} is symmetric - use generateSecret() instead`);
 	}
-	const alg = SetAlg(algorithm) as Alg & ReturnType<typeof SetAlg>;
+	const alg = SetAlg(info.name) as Alg & ReturnType<typeof SetAlg>;
 	try {
-		const { publicKey, privateKey } = await joseGenerateKeyPair(algorithm, {
+		const { publicKey, privateKey } = await joseGenerateKeyPair(info.name, {
 			extractable: options.extractable ?? false,
 		});
 		return {
@@ -53,7 +51,7 @@ export async function generateKeyPair<const Alg extends string = "EdDSA">(
 export function generateSecret<const Alg extends string = "HS256">(
 	algorithm: Alg = "HS256" as Alg
 ): LacewingKey<Alg> {
-	const info = getAlgorithmProperties(algorithm);
+	const info = resolveAlgorithm(algorithm);
 	if (info.kty !== "oct") {
 		throw new JWTError(
 			"KEY_TYPE_MISMATCH",

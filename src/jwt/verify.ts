@@ -22,7 +22,7 @@ import { decodeUTF8 } from "../lib/utf8.js";
 import { parseJsonObject } from "../lib/json.js";
 import { validateHeader } from "../lib/headers.js";
 import { validateClaims } from "../lib/claims.js";
-import { getAlgorithmProperties } from "../lib/algorithms.js";
+import { findAlgorithm } from "../lib/algorithms.js";
 import { validateHMACSecret } from "../lib/entropy.js";
 import { buildRevocationContext } from "../revocation/store.js";
 import {
@@ -64,8 +64,9 @@ async function resolveKey(
 			"Token algorithm does not match the key source's resolved algorithm"
 		);
 	}
-	if (resolved.key instanceof Uint8Array && getAlgorithmProperties(header.alg).kty === "oct") {
-		validateHMACSecret(resolved.key, header.alg);
+	const info = findAlgorithm(header.alg, profile.alg);
+	if (resolved.key instanceof Uint8Array && info.kty === "oct") {
+		validateHMACSecret(resolved.key, info);
 	}
 	return resolved;
 }

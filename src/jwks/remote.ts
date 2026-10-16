@@ -9,18 +9,13 @@
  *   failing, then verification fails closed (LW-jwks.2)
  * - the response byte budget is enforced while reading, not after
  * - symmetric (`oct`) entries are refused: a JWKS endpoint is public
- * - entries outside the registry are dropped
+ * - entries for algorithms Lacewing has no descriptor for are dropped
  */
 
 import { JWTError } from "../util/errors.js";
 import { resolveFromJwks, validateJwksShape } from "./local.js";
-import type {
-	JwtHeader,
-	KeySource,
-	ResolvedVerificationKey,
-	StaticJWK,
-	ValidAlg,
-} from "../types.js";
+import type { AlgorithmInfo } from "../lib/algorithms.js";
+import type { JwtHeader, KeySource, ResolvedVerificationKey, StaticJWK } from "../types.js";
 
 const DEFAULT_CACHE_TTL_SECONDS = 300;
 const DEFAULT_COOLDOWN_SECONDS = 30;
@@ -227,7 +222,7 @@ export function createRemoteJWKSet(
 	return {
 		async getVerificationKey(
 			header: JwtHeader,
-			allowedAlgorithms: readonly ValidAlg[]
+			allowedAlgorithms: readonly AlgorithmInfo[]
 		): Promise<ResolvedVerificationKey> {
 			await ensureFresh();
 			try {

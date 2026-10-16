@@ -4,8 +4,8 @@ import { refusal } from "../../helpers.js";
 import { createRemoteJWKSet } from "../../../src/jwks/remote.js";
 import { generateKeyPair } from "../../../src/key/generate.js";
 import { exportKeyJWK } from "../../../src/key/export.js";
-import { toValidAlg } from "../../../src/lib/algorithms.js";
-import type { JwtHeader, StaticJWK } from "../../../src/types.js";
+import { resolveAlgorithm } from "../../../src/lib/algorithms.js";
+import { SetAlg, type JwtHeader, type StaticJWK } from "../../../src/types.js";
 
 const alice = await generateKeyPair("EdDSA", { extractable: true });
 const bob = await generateKeyPair("EdDSA", { extractable: true });
@@ -13,10 +13,10 @@ const aliceJwk: StaticJWK = { ...(await exportKeyJWK(alice.publicKey)), kid: "al
 const bobJwk: StaticJWK = { ...(await exportKeyJWK(bob.publicKey)), kid: "bob" };
 
 const URL_ = "https://auth.example.com/jwks";
-const ALLOWED = [toValidAlg("EdDSA")];
+const ALLOWED = [resolveAlgorithm("EdDSA")];
 
 function header(kid: string): JwtHeader {
-	return { alg: toValidAlg("EdDSA"), typ: "at+jwt", kid };
+	return { alg: SetAlg("EdDSA"), typ: "at+jwt", kid };
 }
 
 function jwksResponse(keys: StaticJWK[], headers: Record<string, string> = {}): Response {
@@ -254,8 +254,8 @@ test("[LW-jwks.4] symmetric keys are refused from a remote JWKS", async () => {
 	const octJwk = { kty: "oct", alg: "HS256", kid: "shared", k: "a".repeat(43) } as StaticJWK;
 	const { fetch } = scriptedFetch([() => jwksResponse([octJwk])]);
 	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 0 });
-	const hs: JwtHeader = { alg: toValidAlg("HS256"), typ: "at+jwt", kid: "shared" };
-	await assert.rejects(source.getVerificationKey(hs, [toValidAlg("HS256")]), refusal("JWKS_NO_MATCHING_KEY"));
+	const hs: JwtHeader = { alg: SetAlg("HS256"), typ: "at+jwt", kid: "shared" };
+	await assert.rejects(source.getVerificationKey(hs, [resolveAlgorithm("HS256")]), refusal("JWKS_NO_MATCHING_KEY"));
 });
 
 test("[8725-3.1.2] a remote RSA key without alg is refused when the profile allows several RSA algorithms", async () => {
@@ -263,11 +263,11 @@ test("[8725-3.1.2] a remote RSA key without alg is refused when the profile allo
 	const { alg: _alg, ...unbound } = { ...(await exportKeyJWK(rsa.publicKey)), kid: "rsa" } as StaticJWK;
 	const { fetch } = scriptedFetch([() => jwksResponse([unbound])]);
 	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 300 });
-	const rsaHeader: JwtHeader = { alg: toValidAlg("PS512"), typ: "at+jwt", kid: "rsa" };
+	const rsaHeader: JwtHeader = { alg: SetAlg("PS512"), typ: "at+jwt", kid: "rsa" };
 	await assert.rejects(
-		source.getVerificationKey(rsaHeader, [toValidAlg("PS256"), toValidAlg("PS512")]),
+		source.getVerificationKey(rsaHeader, [resolveAlgorithm("PS256"), resolveAlgorithm("PS512")]),
 		refusal("JWKS_NO_MATCHING_KEY")
 	);
-	const resolved = await source.getVerificationKey(rsaHeader, [toValidAlg("PS512")]);
+	const resolved = await source.getVerificationKey(rsaHeader, [resolveAlgorithm("PS512")]);
 	assert.equal(resolved.alg, "PS512");
 });

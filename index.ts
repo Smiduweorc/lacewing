@@ -76,6 +76,7 @@ export { unsafeDecode } from "./src/util/unsafe-decode.js";
 export { JWTError, type JWTErrorCode, type JWTClaimErrorCode } from "./src/util/errors.js";
 
 // Public types
+export { type AlgorithmInfo } from "./src/lib/algorithms.js";
 export {
 	toSeconds,
 	type ClaimsPolicy,

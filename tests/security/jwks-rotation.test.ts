@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import { refusal } from "../helpers.js";
 import { createRemoteJWKSet } from "../../index.js";
 import { generateKeyPair, exportKeyJWK } from "../../index.js";
-import { toValidAlg } from "../../src/lib/algorithms.js";
-import type { JwtHeader, StaticJWK } from "../../src/types.js";
+import { resolveAlgorithm } from "../../src/lib/algorithms.js";
+import { SetAlg, type JwtHeader, type StaticJWK } from "../../src/types.js";
 
 const skip = process.env.LACEWING_SKIP_SECURITY === "1";
 
@@ -22,8 +22,8 @@ const aliceJwk: StaticJWK = { ...(await exportKeyJWK(alice.publicKey)), kid: "al
 const bobJwk: StaticJWK = { ...(await exportKeyJWK(bob.publicKey)), kid: "bob" };
 
 const URL_ = "https://auth.example.com/jwks";
-const ALLOWED = [toValidAlg("EdDSA")];
-const header = (kid: string): JwtHeader => ({ alg: toValidAlg("EdDSA"), typ: "at+jwt", kid });
+const ALLOWED = [resolveAlgorithm("EdDSA")];
+const header = (kid: string): JwtHeader => ({ alg: SetAlg("EdDSA"), typ: "at+jwt", kid });
 
 function jwks(keys: StaticJWK[]): Response {
 	return new Response(JSON.stringify({ keys }), {

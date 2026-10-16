@@ -3,6 +3,10 @@ import assert from "node:assert/strict";
 import { refusal } from "../../helpers.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
+import { SignJWT } from "../../../src/jwt/sign.js";
+import { jwtVerify } from "../../../src/jwt/verify.js";
+import { LEGACY_RS256 } from "../../../src/legacy/rsa.js";
+import type { ExpectedJwtProfile } from "../../../src/types.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 
@@ -30,13 +34,39 @@ test("[8725-3.1.1] typ, issuer, audience, algorithms, keys and maxTokenAge are s
 	assert.throws(() => defineProfile({ ...base(), algorithms: [] }), TypeError);
 });
 
-test("[8725-3.2.1] the allowlist only accepts registry algorithms", () => {
+test("[8725-3.2.1] the allowlist only accepts default-set names and Lacewing descriptors", () => {
 	assert.throws(() => defineProfile({ ...base(), algorithms: ["none"] }), refusal("ALGORITHM_NOT_ALLOWED"));
 	assert.throws(() => defineProfile({ ...base(), algorithms: ["RS256"] }), refusal("ALGORITHM_NOT_ALLOWED"));
 	assert.throws(
 		() => defineProfile({ ...base(), algorithms: ["EdDSA", "nOnE"] }),
 		refusal("ALGORITHM_NOT_ALLOWED")
 	);
+});
+
+test("[8725-3.2.3] the allowlist mixes default names with legacy descriptors, resolved to descriptors", () => {
+	const profile = defineProfile({ ...base(), algorithms: ["EdDSA", LEGACY_RS256] });
+	assert.deepEqual(profile.alg.map((info) => info.name), ["EdDSA", "RS256"]);
+	assert.equal(profile.alg[1], LEGACY_RS256);
+	assert.equal(Object.isFrozen(profile.alg), true);
+});
+
+test("[8725-3.2.3] a hand-built descriptor in the allowlist is refused", () => {
+	const forged = Object.freeze({ name: "RS256", kty: "RSA", minKeyBits: 1024 } as const);
+	assert.throws(() => defineProfile({ ...base(), algorithms: ["EdDSA", forged] }), refusal("ALGORITHM_NOT_ALLOWED"));
+});
+
+test("[8725-3.2.3] a hand-built profile carrying a forged descriptor cannot verify anything", async () => {
+	const secret = generateSecret("HS256");
+	const token = await new SignJWT("at+jwt")
+		.issuer("https://auth.example.com")
+		.audience("https://api.example.com")
+		.expiresIn("5m")
+		.sign(secret);
+	const real = defineProfile({ ...base(), algorithms: ["HS256"], keys: secret });
+	await assert.doesNotReject(jwtVerify(token, real));
+	const forged = Object.freeze({ name: "HS256", kty: "oct", minKeyBits: 8 } as const);
+	const handBuilt: ExpectedJwtProfile = { ...real, alg: [forged] };
+	await assert.rejects(jwtVerify(token, handBuilt), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
 test("clock skew has a sane default and a hard cap", () => {

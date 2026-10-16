@@ -7,17 +7,18 @@
 // Claim registry: https://www.iana.org/assignments/jwt/jwt.xhtml
 
 import { JWTError } from "./util/errors.js";
+import type { AlgorithmInfo } from "./lib/algorithms.js";
 
 /**
- * A string that has been validated against the algorithm registry.
+ * An algorithm name that has passed an allowlist check.
  * `"none"` is unrepresentable (RFC 8725 §3.2).
  */
 export type ValidAlg = string & { readonly __alg: unique symbol };
 
 /**
  * Brand a string as a {@link ValidAlg}. Rejects `"none"` in any casing.
- * Registry membership is enforced separately by `lib/algorithms.ts`;
- * this brand only guarantees the value is not the `none` algorithm.
+ * Which algorithms a call accepts is decided separately, from the set the
+ * caller passed; this brand only guarantees the value is not `none`.
  */
 export const SetAlg = (value: string): ValidAlg => {
 	if (value.toLowerCase() === "none") {
@@ -140,11 +141,15 @@ export interface ResolvedVerificationKey {
 /**
  * Anything that can produce a verification key for a token header.
  * Implemented by `createLocalJWKSet` and `createRemoteJWKSet`.
+ *
+ * `allowedAlgorithms` is the profile's allowlist as descriptors, so a source
+ * can tell which key type and curve each one needs; `header.alg` is already
+ * one of them.
  */
 export interface KeySource {
 	getVerificationKey(
 		header: JwtHeader,
-		allowedAlgorithms: readonly ValidAlg[]
+		allowedAlgorithms: readonly AlgorithmInfo[]
 	): Promise<ResolvedVerificationKey>;
 }
 
@@ -261,7 +266,8 @@ export interface ExpectedJwtProfile {
 	typ: string;
 	iss: string;
 	aud: string; // The specific audience this API expects to be inside the token
-	alg: readonly ValidAlg[];
+	/** The algorithm allowlist, resolved to Lacewing's own descriptors. */
+	alg: readonly AlgorithmInfo[];
 	keys: KeySource | LacewingKey;
 	maxTokenAge: DurationSeconds;
 	/** Optional cap on the token's declared span (`exp - iat`). */

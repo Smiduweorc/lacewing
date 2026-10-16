@@ -8,7 +8,7 @@
  * issuer - that is the §3.8 issuer-to-key binding.
  */
 
-import { toValidAlg } from "../lib/algorithms.js";
+import { resolveAlgorithm, type AlgorithmInfo } from "../lib/algorithms.js";
 import { parseDuration } from "../lib/duration.js";
 import { createLocalJWKSet } from "../jwks/local.js";
 import { createRemoteJWKSet } from "../jwks/remote.js";
@@ -34,8 +34,13 @@ export interface ProfileOptions {
 	issuer: string;
 	/** The audience value that must appear in the token (§3.9). */
 	audience: string;
-	/** Explicit algorithm allowlist - the token header never decides (§3.1). */
-	algorithms: readonly string[];
+	/**
+	 * Explicit algorithm allowlist - the token header never decides (§3.1).
+	 * Names from the default set (`"EdDSA"`, `"ES256"`, `"PS256"`, ...), or
+	 * legacy descriptors from `lacewing/legacy/rsa` such as `LEGACY_RS256`;
+	 * `"RS256"` as a bare string is refused.
+	 */
+	algorithms: readonly (string | AlgorithmInfo)[];
 	/** Key source: a JWKS (static or remote config), a KeySource, or a single key. */
 	keys: KeySource | LacewingKey | StaticJWKS | RemoteJWKS;
 	/** Maximum accepted token age (`now - iat`), independent of `exp`. */
@@ -67,7 +72,7 @@ function requireNonEmptyString(value: unknown, field: string): string {
 
 function normalizeKeys(
 	keys: ProfileOptions["keys"],
-	algorithms: readonly string[]
+	algorithms: readonly AlgorithmInfo[]
 ): KeySource | LacewingKey {
 	if (isLacewingKey(keys)) {
 		if (keys.keyType === "private") {
@@ -75,7 +80,7 @@ function normalizeKeys(
 				"Profiles verify tokens - pass the public key, not the private key"
 			);
 		}
-		if (!algorithms.includes(keys.algorithm)) {
+		if (!algorithms.some((info) => info.name === (keys.algorithm as string))) {
 			throw new TypeError(
 				"The profile key's algorithm is not in the profile's allowlist"
 			);
@@ -113,7 +118,7 @@ export function defineProfile(options: ProfileOptions): ExpectedJwtProfile {
 	if (!Array.isArray(options.algorithms) || options.algorithms.length === 0) {
 		throw new TypeError("Profile requires a non-empty algorithm allowlist");
 	}
-	const alg = Object.freeze(options.algorithms.map((name) => toValidAlg(name)));
+	const alg = Object.freeze(options.algorithms.map((choice) => resolveAlgorithm(choice)));
 
 	const maxTokenAge = parseDuration(options.maxTokenAge);
 	if (maxTokenAge < 1) {
@@ -148,7 +153,7 @@ export function defineProfile(options: ProfileOptions): ExpectedJwtProfile {
 		iss,
 		aud,
 		alg,
-		keys: normalizeKeys(options.keys, options.algorithms),
+		keys: normalizeKeys(options.keys, alg),
 		maxTokenAge: toSeconds(maxTokenAge),
 		maxClockSkew: toSeconds(maxClockSkew),
 	};

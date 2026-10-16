@@ -1,6 +1,6 @@
 /**
  * `Ed25519` is RFC 9864's fully-specified name for the signature `EdDSA`
- * already covers. It is its own registry entry, so a key or profile bound to
+ * already covers. It is its own descriptor, so a key or profile bound to
  * one name does not accept the other: a token says which name it was signed
  * under, and the profile decides which names it allows.
  */
@@ -50,7 +50,7 @@ function webCryptoPair(): ReturnType<typeof joseGenerateKeyPair> {
 	return joseGenerateKeyPair("Ed25519", { extractable: true });
 }
 
-test("[8725-3.2.4] Ed25519 signs and verifies from its one registry entry", async () => {
+test("[8725-3.2.4] Ed25519 signs and verifies from its one descriptor", async () => {
 	const { publicKey, privateKey } = await generateKeyPair("Ed25519");
 	assert.equal(publicKey.algorithm, "Ed25519");
 	const token = await sign(privateKey);

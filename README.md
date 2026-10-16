@@ -418,16 +418,26 @@ tokens, useless (by design) for auth logic.
 
 ### Legacy interop
 
-The `RS*` (RSASSA-PKCS1-v1_5) family exists only behind an explicit import, for
-verifying tokens from issuers you don't control and can't move off PKCS#1 v1.5:
+The `RS*` (RSASSA-PKCS1-v1_5) family is not in the default set, for verifying
+tokens from issuers you don't control and can't move off PKCS#1 v1.5. Each one
+is a descriptor you import and pass where you want it accepted:
 
 ```ts
-import { enableLegacyRS256 } from "lacewing/legacy/rs256";
-enableLegacyRS256(); // grep for this in code review
+import { LEGACY_RS256 } from "lacewing/legacy/rsa"; // grep for this in code review
+
+const key = await importKey(issuerPem, LEGACY_RS256);
+const legacyIdp = defineProfile({ ..., algorithms: [LEGACY_RS256], keys: key });
 
 // Or, for an issuer that rotates across hash sizes:
-import { enableLegacyRSA } from "lacewing/legacy/rsa"; // RS256 + RS384 + RS512
+import { LEGACY_RSA } from "lacewing/legacy/rsa"; // [LEGACY_RS256, LEGACY_RS384, LEGACY_RS512]
+defineProfile({ ..., algorithms: LEGACY_RSA, keys: { jwksUri } });
 ```
+
+Importing the module changes nothing, and passing a descriptor to one profile
+changes no other: `"RS256"` as a string is refused everywhere, and a profile
+that does not list `LEGACY_RS256` refuses RS256 tokens, in the same process.
+Descriptors are checked by identity, so a hand-built
+`{ name: "RS256", minKeyBits: 1024 }` is refused rather than trusted.
 
 Prefer `PS256`/`EdDSA` everywhere you control both sides.
 
@@ -436,7 +446,7 @@ Prefer `PS256`/`EdDSA` everywhere you control both sides.
 `EdDSA` and `Ed25519` are the same signature over the same key. `Ed25519` is
 the fully-specified name from [RFC 9864](https://www.rfc-editor.org/rfc/rfc9864),
 and some issuers and clients (oauth4webapi, for one) write only that one. Both
-are in the registry, as two entries, and Lacewing does not treat them as
+are in the default set, as two entries, and Lacewing does not treat them as
 aliases:
 
 - A profile accepts the names you list. `algorithms: ["EdDSA"]` refuses a
@@ -457,18 +467,25 @@ covered by semver like the root export, and it is read-only:
 import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } from "lacewing/extension";
 
 getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
+getAlgorithmProperties("RS256", [LEGACY_RS256]); // legacy names answer only for a caller that passes them
 parseDuration("15m");            // 900, as DurationSeconds
 parseJsonObject(text, "header"); // a plain object, or JWT_INVALID; a member named twice, or __proto__/constructor/prototype, is refused
 readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
 ```
 
-Registry entries come back frozen, so nothing that imports them can lower a
-key-size floor for the rest of the process. Adding to the registry stays
-behind the `legacy/` imports, and header validation is not exported: it
+Descriptors come back frozen, so nothing that imports them can lower a
+key-size floor for the rest of the process, and there is no registry to add
+to: what one package opts into, by passing a `legacy/` descriptor, never
+changes what another sees. Header validation is not exported: it
 refuses an embedded `jwk`, which is right for a token and wrong for a format
 that carries its own key, so each format owns its own header rules.
 
 ## Known quirks
+
+- **Two copies of Lacewing do not share descriptors.** A `LEGACY_RS256` from
+  one installed copy is a forgery to another, because descriptors are checked
+  by identity. If a package you depend on brings its own Lacewing, `npm ls
+  lacewing` shows it; dedupe to one copy.
 
 - **`x5t` in a header rejects the token.** Lacewing refuses `jku`, `x5u`,
   `jwk`, `x5c`, `x5t`, `zip` and `crit` outright rather than ignoring them,

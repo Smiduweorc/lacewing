@@ -8,7 +8,7 @@
  */
 
 import { JWTError } from "../util/errors.js";
-import { getAlgorithmProperties } from "./algorithms.js";
+import { findAlgorithm } from "./algorithms.js";
 import { SetAlg, type ExpectedJwtProfile, type JwtHeader } from "../types.js";
 
 const KID_MAX_LENGTH = 128;
@@ -60,15 +60,15 @@ export function validateHeader(raw: unknown, profile: ExpectedJwtProfile): JwtHe
 			"Algorithm 'none' (or a missing alg) is not allowed"
 		);
 	}
-	if (!profile.alg.some((allowed) => (allowed as string) === alg)) {
+	if (!profile.alg.some((allowed) => allowed.name === alg)) {
 		throw new JWTError(
 			"ALGORITHM_NOT_ALLOWED",
 			"Token algorithm is not in this profile's allowlist"
 		);
 	}
-	// Defense in depth: the allowlist is registry-validated at profile
-	// creation, but re-check in case the profile object was hand-built.
-	getAlgorithmProperties(alg);
+	// Defense in depth: defineProfile only stores Lacewing's own descriptors,
+	// but re-check in case the profile object was hand-built.
+	findAlgorithm(alg, profile.alg);
 
 	const typ = header.typ;
 	if (typeof typ !== "string" || typ.length === 0) {

@@ -8,7 +8,7 @@
  */
 
 import { JWTError } from "../util/errors.js";
-import { getAlgorithmProperties } from "./algorithms.js";
+import type { AlgorithmInfo } from "./algorithms.js";
 
 // Substrings that only ever show up in human-chosen secrets.
 const COMMON_WORDS = [
@@ -149,8 +149,8 @@ export function isPasswordLike(bytes: Uint8Array): boolean {
  * A printable secret is measured by what its encoding carries, not its byte
  * count: 64 hex characters are 64 bytes but only 256 bits of key.
  */
-export function validateHMACSecret(secret: Uint8Array, algorithmName: string): void {
-	const { minKeyBits } = getAlgorithmProperties(algorithmName);
+export function validateHMACSecret(secret: Uint8Array, algorithm: AlgorithmInfo): void {
+	const { name: algorithmName, minKeyBits } = algorithm;
 	const minBytes = Math.ceil(minKeyBits / 8);
 	if (secret.length < minBytes) {
 		throw new JWTError(

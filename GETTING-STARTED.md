@@ -100,11 +100,12 @@ const secret = generateSecret("HS256");                             // symmetric
 ```
 
 Supported algorithms: `EdDSA` (default), `ES256`/`ES384`/`ES512`,
-`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. The `RS*` family is not
-registered at all. Using it means importing `lacewing/legacy/rsa` and calling
-`enableLegacyRS256()` (or `enableLegacyRSA()` for the whole family), which is
-the marker code review looks for. Prefer `PS256` or `EdDSA` where you control
-both sides.
+`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. The `RS*` family is not in
+that set, and `"RS256"` as a string is refused. Using it means importing
+`LEGACY_RS256` (or `LEGACY_RSA` for the whole family) from
+`lacewing/legacy/rsa` and passing it to `importKey` and to the profile's
+`algorithms`, which is the line code review looks for. It applies only where
+you pass it. Prefer `PS256` or `EdDSA` where you control both sides.
 
 Use `EdDSA` unless you have a reason not to. Under `HS256` everyone who can
 verify a token can also mint one, so your API servers can impersonate your
