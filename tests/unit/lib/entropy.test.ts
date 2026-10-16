@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fc from "fast-check";
 import { isPasswordLike, validateHMACSecret } from "../../../src/lib/entropy.js";
 import { EntropyCheckFailed } from "../../../src/util/errors.js";
 
@@ -99,10 +100,27 @@ test("[8725-3.5.2] secrets with spaces or punctuation are not an encoded random 
 test("random hex and base64 keys are never flagged, over many samples", () => {
 	// The thresholds were tuned against a 7M-key sweep; this keeps a cheap
 	// regression check in the suite. The old 3.5 bits/byte floor failed here.
-	for (let i = 0; i < 20000; i++) {
-		const random = Buffer.from(globalThis.crypto.getRandomValues(new Uint8Array(32)));
-		for (const encoded of [random.toString("hex"), random.toString("hex").toUpperCase(), random.toString("base64"), random.toString("base64url")]) {
-			assert.doesNotThrow(() => validateHMACSecret(encoder.encode(encoded), "HS256"), encoded);
-		}
-	}
+	// The keys come from a fixed seed: a uniformly random base64 key contains
+	// a COMMON_WORDS entry such as "secret" about once in 14 million draws
+	// (case folding makes each letter a 1-in-32 match), and that rejection is
+	// intended, so an unseeded sample could fail on a key that deserved it.
+	fc.assert(
+		fc.property(fc.noBias(fc.uint8Array({ minLength: 32, maxLength: 32 })), (bytes) => {
+			const random = Buffer.from(bytes);
+			for (const encoded of [random.toString("hex"), random.toString("hex").toUpperCase(), random.toString("base64"), random.toString("base64url")]) {
+				assert.doesNotThrow(() => validateHMACSecret(encoder.encode(encoded), "HS256"), encoded);
+			}
+		}),
+		{ numRuns: 20000, seed: 8725 }
+	);
+});
+
+test("a random key whose base64 happens to spell a common word is rejected", () => {
+	// Why the many-samples test above is seeded: this is a real 32-byte key,
+	// and the word check refuses it on purpose.
+	const bytes = Buffer.from("x7SeCrEtq0Zp4LmN2vB8wK1yR5tH9jD3fG6aQcU0oIs=", "base64");
+	assert.equal(bytes.length, 32);
+	assert.equal(isPasswordLike(encoder.encode(bytes.toString("base64"))), true);
+	assert.throws(() => validateHMACSecret(encoder.encode(bytes.toString("base64")), "HS256"), EntropyCheckFailed);
+	assert.doesNotThrow(() => validateHMACSecret(encoder.encode(bytes.toString("hex")), "HS256"));
 });
