@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-10-16
+
+### Bug Fixes
+
+- Reject __proto__, constructor and prototype member names in token json
+- Run npm pack through npm's js entry so the tarball test works on windows
+
+### Documentation
+
+- Note that x5t headers are refused and what that means for entra id v1.0 tokens
+
+### Miscellaneous Tasks
+
+- Point repository at the smiduweorc org
+
+### Refactor
+
+- Decode and encode with Uint8Array instead of node:buffer
+- [**breaking**] Replace the sixteen error subclasses with one JWTError carrying a code
+- [**breaking**] Replace the global algorithm registry with descriptors passed per call
+
+### Security
+
+- Declare sideEffects false, ship an explicit files list and typecheck the tests
+
+### Testing
+
+- Seed the random-key sweep so an intended word match cannot flake it
+
 ## [1.2.2] - 2026-10-15
 
 ### Bug Fixes
