@@ -12,6 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import {
 	EncryptJWT,
 	jwtDecrypt,
@@ -23,11 +24,6 @@ import {
 	importEncryptionKey,
 	SignJWT,
 	generateSecret,
-	AlgorithmNotAllowed,
-	JWTClaimValidationFailed,
-	JWTInvalid,
-	MaxLifetimeExceeded,
-	MissingClaim,
 	type ExpectedDecryptionProfile,
 } from "../../index.js";
 
@@ -55,24 +51,24 @@ function encToken(build: (b: EncryptJWT) => EncryptJWT = (b) => b): Promise<stri
 
 test("[LW-enc.1] 'none' and weak key-management algorithms are unrepresentable", async () => {
 	for (const alg of ["none", "RSA1_5", "RSA-OAEP", "PBES2-HS256+A128KW", "made-up"]) {
-		await assert.rejects(importEncryptionKey(new Uint8Array(32), alg), AlgorithmNotAllowed, alg);
+		await assert.rejects(importEncryptionKey(new Uint8Array(32), alg), refusal("ALGORITHM_NOT_ALLOWED"), alg);
 	}
 	// A profile cannot allowlist an absent algorithm or a 'none' enc.
-	assert.throws(() => decProfile({ keyManagementAlgorithms: ["RSA1_5"] }), AlgorithmNotAllowed);
-	assert.throws(() => decProfile({ contentEncryptionAlgorithms: ["none"] }), AlgorithmNotAllowed);
+	assert.throws(() => decProfile({ keyManagementAlgorithms: ["RSA1_5"] }), refusal("ALGORITHM_NOT_ALLOWED"));
+	assert.throws(() => decProfile({ contentEncryptionAlgorithms: ["none"] }), refusal("ALGORITHM_NOT_ALLOWED"));
 	// And the builder rejects an unknown enc up front.
-	assert.throws(() => new EncryptJWT("at+jwt", { contentEncryption: "none" }), AlgorithmNotAllowed);
+	assert.throws(() => new EncryptJWT("at+jwt", { contentEncryption: "none" }), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
 test("[LW-enc.2] decryption honors only the profile's allowlisted alg + enc", async () => {
 	const token = await encToken(); // ECDH-ES+A256KW / A256GCM
 	// enc not in the allowlist:
-	await assert.rejects(jwtDecrypt(token, decProfile({ contentEncryptionAlgorithms: ["A128CBC-HS256"] })), AlgorithmNotAllowed);
+	await assert.rejects(jwtDecrypt(token, decProfile({ contentEncryptionAlgorithms: ["A128CBC-HS256"] })), refusal("ALGORITHM_NOT_ALLOWED"));
 	// alg not in the allowlist (and the key would not match either):
 	const rsa = await generateEncryptionKeyPair("RSA-OAEP-256");
 	await assert.rejects(
 		jwtDecrypt(token, decProfile({ keyManagementAlgorithms: ["RSA-OAEP-256"], key: rsa.privateKey })),
-		AlgorithmNotAllowed
+		refusal("ALGORITHM_NOT_ALLOWED")
 	);
 	// The right profile accepts it.
 	const { header } = await jwtDecrypt(token, decProfile());
@@ -82,11 +78,11 @@ test("[LW-enc.2] decryption honors only the profile's allowlisted alg + enc", as
 
 test("[LW-enc.3] encrypt enforces the claim discipline; decrypt validates it", async () => {
 	// Missing iss / aud / exp are refused at encrypt time.
-	await assert.rejects(new EncryptJWT("at+jwt").audience(AUD).expiresIn("5m").encrypt(ecdh.publicKey), MissingClaim);
-	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).expiresIn("5m").encrypt(ecdh.publicKey), MissingClaim);
-	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).encrypt(ecdh.publicKey), MissingClaim);
+	await assert.rejects(new EncryptJWT("at+jwt").audience(AUD).expiresIn("5m").encrypt(ecdh.publicKey), refusal("MISSING_CLAIM"));
+	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).expiresIn("5m").encrypt(ecdh.publicKey), refusal("MISSING_CLAIM"));
+	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).encrypt(ecdh.publicKey), refusal("MISSING_CLAIM"));
 	// Over-cap lifetime is refused.
-	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("2h").encrypt(ecdh.publicKey), MaxLifetimeExceeded);
+	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("2h").encrypt(ecdh.publicKey), refusal("MAX_LIFETIME_EXCEEDED"));
 
 	// Every token gets a unique jti (readable only after decryption).
 	const a = (await jwtDecrypt(await encToken(), decProfile())).payload.jti;
@@ -96,10 +92,10 @@ test("[LW-enc.3] encrypt enforces the claim discipline; decrypt validates it", a
 
 	// Decrypt validates typ/iss/aud: a token typed rt+jwt is refused by an at+jwt profile.
 	const refresh = await new EncryptJWT("rt+jwt").issuer(ISS).audience(AUD).expiresIn("5m").encrypt(ecdh.publicKey);
-	await assert.rejects(jwtDecrypt(refresh, decProfile()), JWTClaimValidationFailed);
+	await assert.rejects(jwtDecrypt(refresh, decProfile()), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 	// Wrong audience is refused.
 	const wrongAud = await new EncryptJWT("at+jwt").issuer(ISS).audience("https://evil.example.com").expiresIn("5m").encrypt(ecdh.publicKey);
-	await assert.rejects(jwtDecrypt(wrongAud, decProfile()), JWTClaimValidationFailed);
+	await assert.rejects(jwtDecrypt(wrongAud, decProfile()), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 });
 
 test("[LW-enc.4] JWS and JWE never cross over", async () => {
@@ -107,7 +103,7 @@ test("[LW-enc.4] JWS and JWE never cross over", async () => {
 	const secret = generateSecret("HS256");
 	const jws = await new SignJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("5m").sign(secret);
 	assert.equal(jws.split(".").length, 3);
-	await assert.rejects(jwtDecrypt(jws, decProfile()), JWTInvalid);
+	await assert.rejects(jwtDecrypt(jws, decProfile()), refusal("JWT_INVALID"));
 
 	// An encrypted token (5 segments) handed to jwtVerify is rejected.
 	const jwe = await encToken();
@@ -115,7 +111,7 @@ test("[LW-enc.4] JWS and JWE never cross over", async () => {
 	const verifyProfile = defineProfile({
 		typ: "at+jwt", issuer: ISS, audience: AUD, algorithms: ["HS256"], keys: secret, maxTokenAge: "15m",
 	});
-	await assert.rejects(jwtVerify(jwe, verifyProfile), JWTInvalid);
+	await assert.rejects(jwtVerify(jwe, verifyProfile), refusal("JWT_INVALID"));
 
 	// And a real round-trip still works.
 	const { payload } = await jwtDecrypt(jwe, decProfile());

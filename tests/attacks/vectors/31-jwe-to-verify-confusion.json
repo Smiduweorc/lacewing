@@ -4,7 +4,6 @@
 	"attacks": "JWS/JWE format confusion",
 	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.12",
 	"relatedRequirements": ["LW-enc.4"],
-	"expectedError": "JWTInvalid",
 	"expectedCode": "JWT_INVALID",
 	"target": "verify",
 	"profile": "hmac",

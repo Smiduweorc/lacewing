@@ -6,11 +6,7 @@
  * the claim, not its value.
  */
 
-import {
-	JWTClaimValidationFailed,
-	JWTExpired,
-	MissingClaim,
-} from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import type { ClaimsPolicy } from "../types.js";
 
 const MAX_STRING_CLAIM_LENGTH = 1024;
@@ -18,13 +14,21 @@ const MAX_STRING_CLAIM_LENGTH = 1024;
 function requireString(payload: Record<string, unknown>, claim: string): string {
 	const value = payload[claim];
 	if (value === undefined) {
-		throw new MissingClaim(claim);
+		throw new JWTError("MISSING_CLAIM", `Required claim "${claim}" is missing`, { claim });
 	}
 	if (typeof value !== "string" || value.length === 0) {
-		throw new JWTClaimValidationFailed(claim, `Claim "${claim}" must be a non-empty string`);
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			`Claim "${claim}" must be a non-empty string`,
+			{ claim }
+		);
 	}
 	if (value.length > MAX_STRING_CLAIM_LENGTH) {
-		throw new JWTClaimValidationFailed(claim, `Claim "${claim}" exceeds the length cap`);
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			`Claim "${claim}" exceeds the length cap`,
+			{ claim }
+		);
 	}
 	return value;
 }
@@ -32,10 +36,14 @@ function requireString(payload: Record<string, unknown>, claim: string): string 
 function requireNumber(payload: Record<string, unknown>, claim: string): number {
 	const value = payload[claim];
 	if (value === undefined) {
-		throw new MissingClaim(claim);
+		throw new JWTError("MISSING_CLAIM", `Required claim "${claim}" is missing`, { claim });
 	}
 	if (typeof value !== "number" || !Number.isFinite(value)) {
-		throw new JWTClaimValidationFailed(claim, `Claim "${claim}" must be a finite number`);
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			`Claim "${claim}" must be a finite number`,
+			{ claim }
+		);
 	}
 	return value;
 }
@@ -66,27 +74,39 @@ export async function validateClaims(
 	// iss - must exactly match the trusted issuer (§3.8).
 	const iss = requireString(payload, "iss");
 	if (iss !== profile.iss) {
-		throw new JWTClaimValidationFailed("iss", "Token issuer is not trusted by this profile");
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Token issuer is not trusted by this profile",
+			{ claim: "iss" }
+		);
 	}
 
 	// aud - the profile's audience must be present (§3.9).
 	if (payload.aud === undefined) {
-		throw new MissingClaim("aud");
+		throw new JWTError("MISSING_CLAIM", "Required claim \"aud\" is missing", { claim: "aud" });
 	}
 	if (!audienceMatches(payload.aud, profile.aud)) {
-		throw new JWTClaimValidationFailed("aud", "Token audience does not include this profile's audience");
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Token audience does not include this profile's audience",
+			{ claim: "aud" }
+		);
 	}
 
 	// exp - required, with bounded clock skew.
 	const exp = requireNumber(payload, "exp");
 	if (nowSeconds >= exp + skew) {
-		throw new JWTExpired("Token has expired");
+		throw new JWTError("JWT_EXPIRED", "Token has expired");
 	}
 
 	// iat - required, may not be in the future.
 	const iat = requireNumber(payload, "iat");
 	if (iat > nowSeconds + skew) {
-		throw new JWTClaimValidationFailed("iat", "Token issued-at time is in the future");
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Token issued-at time is in the future",
+			{ claim: "iat" }
+		);
 	}
 
 	// maxTokenAge - enforced independently of exp (LW-life.2). This bounds how
@@ -95,7 +115,7 @@ export async function validateClaims(
 	// than maxTokenAge. It does not reject such a token on sight - see
 	// maxTokenLifetime for that.
 	if (nowSeconds - iat > profile.maxTokenAge + skew) {
-		throw new JWTExpired("Token exceeds the profile's maximum age");
+		throw new JWTError("JWT_EXPIRED", "Token exceeds the profile's maximum age");
 	}
 
 	// maxTokenLifetime - optional, and about the token's *declared* span
@@ -103,9 +123,10 @@ export async function validateClaims(
 	// a misissuance signal worth refusing outright rather than silently
 	// tolerating for the length of the age window.
 	if (profile.maxTokenLifetime !== undefined && exp - iat > profile.maxTokenLifetime) {
-		throw new JWTClaimValidationFailed(
-			"exp",
-			"Token's declared lifetime (exp - iat) exceeds the profile's maximum"
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Token's declared lifetime (exp - iat) exceeds the profile's maximum",
+			{ claim: "exp" }
 		);
 	}
 
@@ -113,7 +134,11 @@ export async function validateClaims(
 	if (payload.nbf !== undefined) {
 		const nbf = requireNumber(payload, "nbf");
 		if (nbf > nowSeconds + skew) {
-			throw new JWTClaimValidationFailed("nbf", "Token is not yet valid");
+			throw new JWTError(
+				"JWT_CLAIM_VALIDATION_FAILED",
+				"Token is not yet valid",
+				{ claim: "nbf" }
+			);
 		}
 	}
 
@@ -129,7 +154,11 @@ export async function validateClaims(
 	if (profile.subject !== undefined) {
 		const sub = requireString(payload, "sub");
 		if (sub !== profile.subject) {
-			throw new JWTClaimValidationFailed("sub", "Token subject does not match this profile");
+			throw new JWTError(
+				"JWT_CLAIM_VALIDATION_FAILED",
+				"Token subject does not match this profile",
+				{ claim: "sub" }
+			);
 		}
 	}
 
@@ -139,13 +168,13 @@ export async function validateClaims(
 			try {
 				await validate(payload[claim], payload);
 			} catch (cause) {
-				if (cause instanceof JWTClaimValidationFailed || cause instanceof MissingClaim) {
+				if (cause instanceof JWTError && (cause.code === "JWT_CLAIM_VALIDATION_FAILED" || cause.code === "MISSING_CLAIM")) {
 					throw cause;
 				}
-				throw new JWTClaimValidationFailed(
-					claim,
+				throw new JWTError(
+					"JWT_CLAIM_VALIDATION_FAILED",
 					`Custom validation for claim "${claim}" failed`,
-					{ cause }
+					{ claim, cause }
 				);
 			}
 		}

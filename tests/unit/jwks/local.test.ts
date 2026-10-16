@@ -6,10 +6,9 @@ import { jwtVerify } from "../../../src/jwt/verify.js";
 import { SignJWT } from "../../../src/jwt/sign.js";
 import { generateKeyPair } from "../../../src/key/generate.js";
 import { exportKeyJWK } from "../../../src/key/export.js";
-import { toValidAlg } from "../../../src/lib/algorithms.js";
-import { EntropyCheckFailed, JWKSNoMatchingKey } from "../../../src/util/errors.js";
-import { b64u } from "../../helpers.js";
-import type { JwtHeader, StaticJWK } from "../../../src/types.js";
+import { resolveAlgorithm } from "../../../src/lib/algorithms.js";
+import { b64u, refusal } from "../../helpers.js";
+import { SetAlg, type JwtHeader, type StaticJWK } from "../../../src/types.js";
 
 const alice = await generateKeyPair("EdDSA", { extractable: true });
 const bob = await generateKeyPair("EdDSA", { extractable: true });
@@ -17,50 +16,55 @@ const aliceJwk: StaticJWK = { ...(await exportKeyJWK(alice.publicKey)), kid: "al
 const bobJwk: StaticJWK = { ...(await exportKeyJWK(bob.publicKey)), kid: "bob" };
 
 function header(kid?: string, alg = "EdDSA"): JwtHeader {
-	const result: JwtHeader = { alg: toValidAlg(alg), typ: "at+jwt" };
+	const result: JwtHeader = { alg: SetAlg(alg), typ: "at+jwt" };
 	if (kid !== undefined) result.kid = kid;
 	return result;
 }
 
 test("selects the key matching the sanitized kid", async () => {
 	const source = createLocalJWKSet({ keys: [aliceJwk, bobJwk] });
-	const resolved = await source.getVerificationKey(header("bob"), [toValidAlg("EdDSA")]);
+	const resolved = await source.getVerificationKey(header("bob"), [resolveAlgorithm("EdDSA")]);
 	assert.equal(resolved.alg, "EdDSA");
 });
 
 test("fails closed on unknown kid", async () => {
 	const source = createLocalJWKSet({ keys: [aliceJwk, bobJwk] });
 	await assert.rejects(
-		source.getVerificationKey(header("carol"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		source.getVerificationKey(header("carol"), [resolveAlgorithm("EdDSA")]),
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 });
 
 test("ambiguity without a kid fails closed rather than guessing", async () => {
 	const source = createLocalJWKSet({ keys: [aliceJwk, bobJwk] });
 	await assert.rejects(
-		source.getVerificationKey(header(undefined), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		source.getVerificationKey(header(undefined), [resolveAlgorithm("EdDSA")]),
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 	// A single unambiguous key works without a kid.
 	const single = createLocalJWKSet({ keys: [aliceJwk] });
-	await assert.doesNotReject(single.getVerificationKey(header(undefined), [toValidAlg("EdDSA")]));
+	await assert.doesNotReject(single.getVerificationKey(header(undefined), [resolveAlgorithm("EdDSA")]));
 });
 
-test("[8725-3.2.1] entries outside the registry or marked for encryption are never candidates", async () => {
+test("[8725-3.2.1] entries for another algorithm, an unknown one, or encryption are never candidates", async () => {
 	const source = createLocalJWKSet({
 		keys: [
 			{ ...aliceJwk, use: "enc" },
-			{ ...bobJwk, alg: "RS256" }, // dropped: not a registry algorithm
+			{ ...bobJwk, alg: "RS256" }, // kept, but only an RS256 token could match it
+			{ ...bobJwk, kid: "carol", alg: "made-up" }, // dropped: no descriptor by that name
 		],
 	});
 	await assert.rejects(
-		source.getVerificationKey(header("alice"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		source.getVerificationKey(header("carol"), [resolveAlgorithm("EdDSA")]),
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 	await assert.rejects(
-		source.getVerificationKey(header("bob"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		source.getVerificationKey(header("alice"), [resolveAlgorithm("EdDSA")]),
+		refusal("JWKS_NO_MATCHING_KEY")
+	);
+	await assert.rejects(
+		source.getVerificationKey(header("bob"), [resolveAlgorithm("EdDSA")]),
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 });
 
@@ -69,8 +73,8 @@ test("[8725-3.5.2] weak oct keys inside a JWKS are rejected at resolution", asyn
 		keys: [{ kty: "oct", k: b64u(new TextEncoder().encode("password-password-password-password")), kid: "weak" }],
 	});
 	await assert.rejects(
-		source.getVerificationKey(header("weak", "HS256"), [toValidAlg("HS256")]),
-		EntropyCheckFailed
+		source.getVerificationKey(header("weak", "HS256"), [resolveAlgorithm("HS256")]),
+		refusal("ENTROPY_CHECK_FAILED")
 	);
 });
 
@@ -102,6 +106,6 @@ test("[8725-3.1.2] an EC key without alg stays usable under a multi-algorithm pr
 	const ec = await generateKeyPair("ES256", { extractable: true });
 	const { alg: _alg, ...unbound } = { ...(await exportKeyJWK(ec.publicKey)), kid: "ec" } as StaticJWK;
 	const source = createLocalJWKSet({ keys: [unbound] });
-	const resolved = await source.getVerificationKey(header("ec", "ES256"), [toValidAlg("ES256"), toValidAlg("ES384"), toValidAlg("EdDSA")]);
+	const resolved = await source.getVerificationKey(header("ec", "ES256"), [resolveAlgorithm("ES256"), resolveAlgorithm("ES384"), resolveAlgorithm("EdDSA")]);
 	assert.equal(resolved.alg, "ES256");
 });

@@ -7,8 +7,8 @@
  * because Lacewing supports no header extensions.
  */
 
-import { AlgorithmNotAllowed, JWTClaimValidationFailed, JWTInvalid } from "../util/errors.js";
-import { getAlgorithmProperties } from "./algorithms.js";
+import { JWTError } from "../util/errors.js";
+import { findAlgorithm } from "./algorithms.js";
 import { SetAlg, type ExpectedJwtProfile, type JwtHeader } from "../types.js";
 
 const KID_MAX_LENGTH = 128;
@@ -29,7 +29,7 @@ export function sanitizeKid(kid: unknown): string {
 		kid.length > KID_MAX_LENGTH ||
 		!KID_CHARSET.test(kid)
 	) {
-		throw new JWTInvalid("Token key identifier failed sanitization");
+		throw new JWTError("JWT_INVALID", "Token key identifier failed sanitization");
 	}
 	return kid;
 }
@@ -43,33 +43,46 @@ export function normalizeTyp(typ: string): string {
 /** Validate a decoded (but unverified) header object against a profile. */
 export function validateHeader(raw: unknown, profile: ExpectedJwtProfile): JwtHeader {
 	if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-		throw new JWTInvalid("Token header is not a JSON object");
+		throw new JWTError("JWT_INVALID", "Token header is not a JSON object");
 	}
 	const header = raw as Record<string, unknown>;
 
 	for (const param of FORBIDDEN_PARAMS) {
 		if (param in header) {
-			throw new JWTInvalid(`Token header parameter "${param}" is not supported`);
+			throw new JWTError("JWT_INVALID", `Token header parameter "${param}" is not supported`);
 		}
 	}
 
 	const alg = header.alg;
 	if (typeof alg !== "string" || alg.toLowerCase() === "none") {
-		throw new AlgorithmNotAllowed("Algorithm 'none' (or a missing alg) is not allowed");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Algorithm 'none' (or a missing alg) is not allowed"
+		);
 	}
-	if (!profile.alg.some((allowed) => (allowed as string) === alg)) {
-		throw new AlgorithmNotAllowed("Token algorithm is not in this profile's allowlist");
+	if (!profile.alg.some((allowed) => allowed.name === alg)) {
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Token algorithm is not in this profile's allowlist"
+		);
 	}
-	// Defense in depth: the allowlist is registry-validated at profile
-	// creation, but re-check in case the profile object was hand-built.
-	getAlgorithmProperties(alg);
+	// Defense in depth: defineProfile only stores Lacewing's own descriptors,
+	// but re-check in case the profile object was hand-built.
+	findAlgorithm(alg, profile.alg);
 
 	const typ = header.typ;
 	if (typeof typ !== "string" || typ.length === 0) {
-		throw new JWTInvalid("Token header is missing a typ (explicit typing is mandatory)");
+		throw new JWTError(
+			"JWT_INVALID",
+			"Token header is missing a typ (explicit typing is mandatory)"
+		);
 	}
 	if (normalizeTyp(typ) !== normalizeTyp(profile.typ)) {
-		throw new JWTClaimValidationFailed("typ", "Unexpected token type for this profile");
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Unexpected token type for this profile",
+			{ claim: "typ" }
+		);
 	}
 
 	const result: JwtHeader = { alg: SetAlg(alg), typ };
@@ -78,7 +91,7 @@ export function validateHeader(raw: unknown, profile: ExpectedJwtProfile): JwtHe
 	}
 	if (header.cty !== undefined) {
 		if (typeof header.cty !== "string") {
-			throw new JWTInvalid("Token header cty must be a string");
+			throw new JWTError("JWT_INVALID", "Token header cty must be a string");
 		}
 		result.cty = header.cty;
 	}

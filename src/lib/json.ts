@@ -8,11 +8,17 @@
  * and that behavior is otherwise unpredictable - Lacewing treats a duplicate
  * key at any nesting level as malformed and rejects the token.
  *
+ * `JSON.parse` also keeps `"__proto__"` as an own property. A caller that
+ * deep-merges the verified claims then writes through it into
+ * Object.prototype, and `constructor` -> `prototype` reaches the same place
+ * (CVE-2019-10744 in lodash). No registered claim or header uses these
+ * names, so they are rejected at any depth, escaped spellings included.
+ *
  * The scan runs only after `JSON.parse` has confirmed the text is
  * well-formed, so it can assume valid JSON and stay small.
  */
 
-import { JWTInvalid } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 
 interface ObjectContext {
 	readonly seen: Set<string>;
@@ -20,6 +26,8 @@ interface ObjectContext {
 }
 
 type Context = ObjectContext | "array";
+
+const PROTOTYPE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
 
 function readString(text: string, start: number): { value: string; next: number } {
 	// text[start] === '"'
@@ -76,8 +84,9 @@ function readString(text: string, start: number): { value: string; next: number 
 }
 
 /**
- * Throw {@link JWTInvalid} if `text` (already known to be valid JSON) contains
- * a duplicated member name in any object at any depth.
+ * Throw `JWT_INVALID` if `text` (already known to be valid JSON) contains
+ * a duplicated member name, or `__proto__`, `constructor` or `prototype` as a
+ * member name, in any object at any depth.
  */
 export function assertNoDuplicateKeys(text: string, what: string): void {
 	const stack: Context[] = [];
@@ -104,8 +113,17 @@ export function assertNoDuplicateKeys(text: string, what: string): void {
 			const top = stack[stack.length - 1];
 			if (top !== undefined && top !== "array" && top.expectingKey) {
 				const { value, next } = readString(text, i);
+				if (PROTOTYPE_KEYS.has(value)) {
+					throw new JWTError(
+						"JWT_INVALID",
+						`Token ${what} contains the member name "${value}", which can pollute object prototypes`
+					);
+				}
 				if (top.seen.has(value)) {
-					throw new JWTInvalid(`Token ${what} contains a duplicate JSON key`);
+					throw new JWTError(
+						"JWT_INVALID",
+						`Token ${what} contains a duplicate JSON key`
+					);
 				}
 				top.seen.add(value);
 				top.expectingKey = false;
@@ -129,18 +147,19 @@ export function assertNoDuplicateKeys(text: string, what: string): void {
 
 /**
  * Decode a token segment's UTF-8 text into a JSON object, rejecting anything
- * that is not a plain object and any duplicate member names.
+ * that is not a plain object, any duplicate member names, and the member
+ * names that reach object prototypes.
  */
 export function parseJsonObject(text: string, what: string): Record<string, unknown> {
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(text);
 	} catch (cause) {
-		if (cause instanceof JWTInvalid) throw cause;
-		throw new JWTInvalid(`Token ${what} is not valid JSON`, { cause });
+		if (cause instanceof JWTError && cause.code === "JWT_INVALID") throw cause;
+		throw new JWTError("JWT_INVALID", `Token ${what} is not valid JSON`, { cause });
 	}
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new JWTInvalid(`Token ${what} is not a JSON object`);
+		throw new JWTError("JWT_INVALID", `Token ${what} is not a JSON object`);
 	}
 	assertNoDuplicateKeys(text, what);
 	return parsed as Record<string, unknown>;

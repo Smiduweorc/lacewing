@@ -3,8 +3,7 @@ import assert from "node:assert/strict";
 import { unsafeDecode } from "../../../src/util/unsafe-decode.js";
 import { SignJWT } from "../../../src/jwt/sign.js";
 import { generateSecret } from "../../../src/key/generate.js";
-import { JWTInvalid } from "../../../src/util/errors.js";
-import { craftHmacToken, craftUnsignedToken, nowSeconds } from "../../helpers.js";
+import { craftHmacToken, craftUnsignedToken, nowSeconds, refusal } from "../../helpers.js";
 import type { UntrustedJwt, VerifiedJwt } from "../../../src/types.js";
 
 const secret = generateSecret("HS256");
@@ -40,7 +39,7 @@ test("[LW-decode.1] the result is branded Untrusted and incompatible with Verifi
 
 test("malformed structure still throws (strict base64url/UTF-8/JSON)", () => {
 	for (const input of ["", "a.b", "a.b.c.d", "!!.!!.!!", "eyJ=.e30.x"]) {
-		assert.throws(() => unsafeDecode(input), JWTInvalid);
+		assert.throws(() => unsafeDecode(input), refusal("JWT_INVALID"));
 	}
-	assert.throws(() => unsafeDecode("x".repeat(100_000)), JWTInvalid);
+	assert.throws(() => unsafeDecode("x".repeat(100_000)), refusal("JWT_INVALID"));
 });

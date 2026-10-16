@@ -4,7 +4,6 @@
 	"attacks": "signature bypass",
 	"reference": "https://auth0.com/blog/critical-vulnerabilities-in-json-web-token-libraries/",
 	"relatedRequirements": ["8725-3.2.2", "8725-3.3.1"],
-	"expectedError": "JWTInvalid",
 	"expectedCode": "JWT_INVALID",
 	"profile": "hmac",
 	"recipe": { "kind": "unsigned", "header": { "alg": "none", "typ": "at+jwt" }, "signature": "" }

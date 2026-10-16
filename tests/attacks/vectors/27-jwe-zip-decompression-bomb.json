@@ -4,7 +4,6 @@
 	"attacks": "decompression bomb / denial of service",
 	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.6",
 	"relatedRequirements": ["8725-3.6.1"],
-	"expectedError": "JWTInvalid",
 	"expectedCode": "JWT_INVALID",
 	"target": "decrypt",
 	"recipe": { "kind": "jweCrafted", "header": { "alg": "dir", "enc": "A256GCM", "typ": "at+jwt", "zip": "DEF" } }

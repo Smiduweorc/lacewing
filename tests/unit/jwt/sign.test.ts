@@ -1,15 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../../src/util/errors.js";
 import { SignJWT } from "../../../src/jwt/sign.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
 import { unsafeDecode } from "../../../src/util/unsafe-decode.js";
-import {
-	KeyTypeMismatch,
-	MaxLifetimeExceeded,
-	MissingClaim,
-	PayloadHygieneViolation,
-} from "../../../src/util/errors.js";
-import { nowSeconds } from "../../helpers.js";
+import { nowSeconds, refusal } from "../../helpers.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 
@@ -49,15 +44,15 @@ test("typ is mandatory at construction", () => {
 test("[8725-3.8/3.9] sign() refuses tokens without iss, aud or exp", async () => {
 	await assert.rejects(
 		new SignJWT("at+jwt").audience("a").expiresIn(60).sign(privateKey),
-		(e: unknown) => e instanceof MissingClaim && e.claim === "iss"
+		(e: unknown) => e instanceof JWTError && e.code === "MISSING_CLAIM" && e.claim === "iss"
 	);
 	await assert.rejects(
 		new SignJWT("at+jwt").issuer("i").expiresIn(60).sign(privateKey),
-		(e: unknown) => e instanceof MissingClaim && e.claim === "aud"
+		(e: unknown) => e instanceof JWTError && e.code === "MISSING_CLAIM" && e.claim === "aud"
 	);
 	await assert.rejects(
 		new SignJWT("at+jwt").issuer("i").audience("a").sign(privateKey),
-		(e: unknown) => e instanceof MissingClaim && e.claim === "exp"
+		(e: unknown) => e instanceof JWTError && e.code === "MISSING_CLAIM" && e.claim === "exp"
 	);
 });
 
@@ -72,19 +67,19 @@ test("waivers are explicit, per-field and grep-loud", async () => {
 	// The other requirements still hold.
 	await assert.rejects(
 		new SignJWT("magic-link").unsafeAllowMissingIssuer().expiresIn("5m").sign(privateKey),
-		MissingClaim
+		refusal("MISSING_CLAIM")
 	);
 });
 
 test("[LW-life.1] lifetimes beyond the cap are rejected at sign time", async () => {
 	await assert.rejects(
 		builder().expiresIn("2h").sign(privateKey),
-		MaxLifetimeExceeded
+		refusal("MAX_LIFETIME_EXCEEDED")
 	);
 	// A 10-year token requires a deliberate, visible maxLifetime.
 	await assert.rejects(
 		builder().expiresIn(315_360_000).sign(privateKey),
-		MaxLifetimeExceeded
+		refusal("MAX_LIFETIME_EXCEEDED")
 	);
 	const token = await new SignJWT("rt+jwt", { maxLifetime: "30d" })
 		.issuer("i")
@@ -103,7 +98,7 @@ test("registered claims cannot be smuggled through .claim()", () => {
 test("[LW-payload.1] the hygiene scanner runs at sign time", async () => {
 	await assert.rejects(
 		builder().claim("password", "hunter2").sign(privateKey),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 });
 
@@ -120,7 +115,7 @@ test("signing requires a Lacewing key that can sign", async () => {
 		builder().sign({} as never),
 		TypeError
 	);
-	await assert.rejects(builder().sign(publicKey), KeyTypeMismatch);
+	await assert.rejects(builder().sign(publicKey), refusal("KEY_TYPE_MISMATCH"));
 });
 
 test("HMAC signing works with generated secrets", async () => {

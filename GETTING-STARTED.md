@@ -100,11 +100,12 @@ const secret = generateSecret("HS256");                             // symmetric
 ```
 
 Supported algorithms: `EdDSA` (default), `ES256`/`ES384`/`ES512`,
-`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. The `RS*` family is not
-registered at all. Using it means importing `lacewing/legacy/rsa` and calling
-`enableLegacyRS256()` (or `enableLegacyRSA()` for the whole family), which is
-the marker code review looks for. Prefer `PS256` or `EdDSA` where you control
-both sides.
+`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. The `RS*` family is not in
+that set, and `"RS256"` as a string is refused. Using it means importing
+`LEGACY_RS256` (or `LEGACY_RSA` for the whole family) from
+`lacewing/legacy/rsa` and passing it to `importKey` and to the profile's
+`algorithms`, which is the line code review looks for. It applies only where
+you pass it. Prefer `PS256` or `EdDSA` where you control both sides.
 
 Use `EdDSA` unless you have a reason not to. Under `HS256` everyone who can
 verify a token can also mint one, so your API servers can impersonate your
@@ -121,7 +122,7 @@ cannot leave through `exportKeyPEM`:
 
 ```ts
 const { privateKey } = await generateKeyPair();
-await exportKeyPEM(privateKey); // throws KeyExportFailed
+await exportKeyPEM(privateKey); // throws KEY_EXPORT_FAILED
 ```
 
 That suits a key generated at boot, but it means you cannot generate a key
@@ -150,7 +151,7 @@ const hmac = await importKey(process.env.SECRET!, "HS256");
 secret fails at startup instead of producing weak signatures:
 
 ```ts
-await importKey("my-secret-password-123", "HS256"); // throws EntropyCheckFailed
+await importKey("my-secret-password-123", "HS256"); // throws ENTROPY_CHECK_FAILED
 ```
 
 A string secret must be random bytes written as hex or base64(url), long
@@ -241,7 +242,7 @@ Applied automatically, with no configuration:
 
 - `jti`: a unique UUID on every token, so revocation always has a key
 - `iat`: set at sign time
-- Lifetime cap: `.expiresIn()` above 1h throws `MaxLifetimeExceeded`. Raise
+- Lifetime cap: `.expiresIn()` above 1h throws `MAX_LIFETIME_EXCEEDED`. Raise
   it with `new SignJWT("at+jwt", { maxLifetime: "24h" })`
 - Payload hygiene: the payload is scanned before signing and refuses
   anything shaped like a password, card number, or PEM key
@@ -253,7 +254,7 @@ token. That is what the last check is for:
 await new SignJWT("at+jwt")
   .issuer(ISSUER).audience(AUDIENCE).expiresIn("5m")
   .claim("password", "hunter2")
-  .sign(privateKey);                        // throws PayloadHygieneViolation
+  .sign(privateKey);                        // throws PAYLOAD_HYGIENE_VIOLATION
 ```
 
 For a false positive, allow that claim by name:
@@ -406,7 +407,7 @@ const refresh = await newRefreshToken()
 profile refuses the other's tokens:
 
 ```ts
-// throws JWTClaimValidationFailed: typ is rt+jwt, the profile demands at+jwt
+// throws JWT_CLAIM_VALIDATION_FAILED: typ is rt+jwt, the profile demands at+jwt
 await jwtVerify(refresh, apiProfile);
 ```
 
@@ -436,7 +437,7 @@ const profile = defineProfile({
 const { payload } = await jwtVerify(token, profile);
 store.revoke(payload.jti as string, payload.exp as number);
 
-await jwtVerify(token, profile); // now throws JWTRevoked
+await jwtVerify(token, profile); // now throws JWT_REVOKED
 ```
 
 Entries are dropped once the token would have expired anyway, so the store
@@ -525,7 +526,7 @@ same algorithm in one JWKS are ambiguous for a Lacewing-signed token:
 ```ts
 // A JWKS holding two EdDSA keys, the state you are in during a rotation.
 await jwtVerify(token, profile);
-// throws JWKSNoMatchingKey: Multiple keys in the JWKS match this token -
+// throws JWKS_NO_MATCHING_KEY: Multiple keys in the JWKS match this token -
 // issue tokens with a kid
 ```
 
@@ -558,42 +559,54 @@ constraint applies only to tokens Lacewing signs.
 
 ## 11. Handling errors
 
-Every error extends `JWTError` and carries a machine-readable `code`.
-Messages are generic and never echo token content, so they cannot become an
-oracle or a log-injection vector.
+Every refusal is a `JWTError`: one class, with a `code` from the
+`JWTErrorCode` union saying why, and a message that starts with `lacewing: `.
+The claim codes also set `.claim` to the claim's name. Messages are generic and
+never echo token content, so they cannot become an oracle or a log-injection
+vector.
+
+An error that is not a `JWTError` did not come from Lacewing's checks: a
+`fetch` you passed to `createRemoteJWKSet` that throws, for one, reaches you as
+itself.
 
 ```ts
-import { JWTError, JWTExpired, JWTRevoked } from "lacewing";
+import { JWTError } from "lacewing";
 
 try {
   const { payload } = await jwtVerify(token, profile);
   return handle(payload);
 } catch (error) {
-  if (error instanceof JWTExpired) return res.status(401).json({ error: "token_expired" });
-  if (error instanceof JWTRevoked) return res.status(401).json({ error: "revoked" });
-  if (error instanceof JWTError) {
-    logger.warn({ code: error.code }, "token rejected");
-    return res.status(401).json({ error: "invalid_token" });
-  }
-  throw error; // not a token problem; don't swallow it
+  if (!(error instanceof JWTError)) throw error; // not a token problem; don't swallow it
+  if (error.code === "JWT_EXPIRED") return res.status(401).json({ error: "token_expired" });
+  logger.warn({ code: error.code, claim: error.claim }, "token rejected");
+  return res.status(401).json({ error: "invalid_token" });
 }
 ```
 
-The codes you will branch on:
+The codes:
 
-| Error | `code` | Means |
-|---|---|---|
-| `JWTInvalid` | `JWT_INVALID` | Malformed, or the signature doesn't check out |
-| `JWTExpired` | `JWT_EXPIRED` | Past `exp`, or older than `maxTokenAge` |
-| `JWTClaimValidationFailed` | `JWT_CLAIM_VALIDATION_FAILED` | A claim is present but wrong (`.claim` names it) |
-| `MissingClaim` | `MISSING_CLAIM` | A required claim isn't there |
-| `AlgorithmNotAllowed` | `ALGORITHM_NOT_ALLOWED` | `alg` isn't in your allowlist |
-| `JWTRevoked` | `JWT_REVOKED` | The store says no |
-| `RevocationCheckFailed` | `REVOCATION_CHECK_FAILED` | The store broke; failing closed |
-| `JWKSFetchFailed` | `JWKS_FETCH_FAILED` | Couldn't fetch the JWKS |
-| `JWKSNoMatchingKey` | `JWKS_NO_MATCHING_KEY` | No key matched, or several did |
-| `EntropyCheckFailed` | `ENTROPY_CHECK_FAILED` | HMAC secret is too weak; a startup problem |
-| `PayloadHygieneViolation` | `PAYLOAD_HYGIENE_VIOLATION` | You're about to sign a secret |
+| `code` | Means |
+|---|---|
+| `JWT_INVALID` | Malformed, or the signature doesn't check out |
+| `JWT_EXPIRED` | Past `exp`, or older than `maxTokenAge` |
+| `JWT_CLAIM_VALIDATION_FAILED` | A claim is present but wrong (`.claim` names it) |
+| `MISSING_CLAIM` | A required claim isn't there (`.claim` names it) |
+| `ALGORITHM_NOT_ALLOWED` | `alg` isn't one Lacewing speaks, or isn't in your allowlist |
+| `JWT_REVOKED` | The store says no |
+| `REVOCATION_CHECK_FAILED` | The store broke; failing closed |
+| `JWKS_FETCH_FAILED` | Couldn't fetch the JWKS with the global `fetch` |
+| `JWKS_NO_MATCHING_KEY` | No key matched, or several did |
+| `KEY_IMPORT_FAILED` | Key material couldn't be imported or generated |
+| `KEY_TYPE_MISMATCH` | The key doesn't fit the algorithm |
+| `KEY_EXPORT_FAILED` | The key couldn't be exported (not extractable, or a secret as PEM) |
+| `ENTROPY_CHECK_FAILED` | HMAC secret is too weak; a startup problem |
+| `PAYLOAD_HYGIENE_VIOLATION` | You're about to sign a secret (`.claim` names where) |
+| `MAX_LIFETIME_EXCEEDED` | `.expiresIn()` is past the lifetime cap |
+| `BEARER_PARSE_FAILED` | The `Authorization` header isn't exactly `Bearer <token>` |
+
+Misconfiguration (a profile with no `typ`, an `http:` JWKS URL, a malformed
+duration) is a `TypeError` at the call that builds the thing, not a
+`JWTError`.
 
 Do not return a distinct HTTP response per code to unauthenticated callers.
 Use `401 invalid_token` for all of them and keep the detail in logs.
@@ -656,4 +669,4 @@ Step 3 waits one token lifetime.
 `npm run demo` in the repository runs a live walkthrough where every
 rejection is a real thrown error. For the full API, see the
 [README](./README.md) and the generated
-[TypeDoc](https://github.com/grMLEqomlkkU5Eeinz4brIrOVCUCkJuN/lacewing).
+[TypeDoc](https://github.com/Smiduweorc/lacewing).

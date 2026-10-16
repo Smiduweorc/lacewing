@@ -9,5 +9,5 @@
 	"keyAlg": "HS256",
 	"profile": { "typ": "at+jwt", "issuer": "https://auth.example.com", "audience": "https://api.example.com", "algorithms": ["HS256"], "maxTokenAge": "15m" },
 	"relatedRequirements": ["8725-3.9.1"],
-	"expect": { "outcome": "reject", "error": "JWTClaimValidationFailed", "code": "JWT_CLAIM_VALIDATION_FAILED" }
+	"expect": { "outcome": "reject", "code": "JWT_CLAIM_VALIDATION_FAILED" }
 }

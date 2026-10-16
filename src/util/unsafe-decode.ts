@@ -2,7 +2,7 @@
  * DANGER: decode-without-verify, for debugging and inspection only.
  */
 
-import { JWTInvalid } from "./errors.js";
+import { JWTError } from "./errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
 import { parseJsonObject } from "../lib/json.js";
@@ -31,14 +31,14 @@ function parseSegment(segment: string, what: string): Record<string, unknown> {
  */
 export function unsafeDecode(token: string): UntrustedJwt {
 	if (typeof token !== "string" || token.length === 0) {
-		throw new JWTInvalid("Token must be a non-empty string");
+		throw new JWTError("JWT_INVALID", "Token must be a non-empty string");
 	}
 	if (token.length > MAX_TOKEN_LENGTH) {
-		throw new JWTInvalid("Token exceeds the maximum length");
+		throw new JWTError("JWT_INVALID", "Token exceeds the maximum length");
 	}
 	const segments = token.split(".");
 	if (segments.length !== 3) {
-		throw new JWTInvalid("Token must have exactly three segments");
+		throw new JWTError("JWT_INVALID", "Token must have exactly three segments");
 	}
 	const [rawHeader, rawPayload] = segments as [string, string, string];
 	// Deliberately no allowlist, typ, or kid checks here - this is a raw

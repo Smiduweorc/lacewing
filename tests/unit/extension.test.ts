@@ -6,8 +6,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../src/util/errors.js";
+import { refusal } from "../helpers.js";
 import * as extension from "../../src/extension.js";
-import { AlgorithmNotAllowed, JWTInvalid } from "../../src/util/errors.js";
+import { LEGACY_RS256 } from "../../src/legacy/rsa.js";
 
 const { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } = extension;
 
@@ -20,13 +22,27 @@ test("[LW-ext.1] the extension exports exactly the four read-only helpers", () =
 	]);
 });
 
-test("[LW-ext.1] nothing that changes the registry or header policy is reachable", () => {
-	for (const name of ["registerLegacyAlgorithm", "validateHeader", "toValidAlg", "SetAlg"]) {
+test("[LW-ext.1] nothing that widens the algorithm set or header policy is reachable", () => {
+	for (const name of ["registerLegacyAlgorithm", "enableLegacyRS256", "validateHeader", "toValidAlg", "resolveAlgorithm", "SetAlg"]) {
 		assert.equal(name in extension, false, name);
 	}
 });
 
-test("[LW-ext.1] a registry lookup is frozen and cannot weaken later imports", () => {
+test("[LW-ext.1] getAlgorithmProperties answers RS256 only for a caller that passes LEGACY_RS256", () => {
+	assert.equal(getAlgorithmProperties("RS256", [LEGACY_RS256]), LEGACY_RS256);
+	assert.throws(() => getAlgorithmProperties("RS256"), refusal("ALGORITHM_NOT_ALLOWED"));
+	assert.throws(() => getAlgorithmProperties("RS256", []), refusal("ALGORITHM_NOT_ALLOWED"));
+	// The legacy list adds to the defaults; it does not replace them.
+	assert.equal(getAlgorithmProperties("ES256", [LEGACY_RS256]).crv, "P-256");
+});
+
+test("[LW-ext.1] getAlgorithmProperties refuses a forged legacy descriptor", () => {
+	const forged = Object.freeze({ name: "RS256", kty: "RSA", minKeyBits: 1024 } as const);
+	assert.throws(() => getAlgorithmProperties("RS256", [forged]), refusal("ALGORITHM_NOT_ALLOWED"));
+	assert.throws(() => getAlgorithmProperties("ES256", [forged]), refusal("ALGORITHM_NOT_ALLOWED"));
+});
+
+test("[LW-ext.1] a lookup is frozen and cannot weaken later imports", () => {
 	const info = getAlgorithmProperties("PS256");
 	assert.deepEqual({ ...info }, { name: "PS256", kty: "RSA", minKeyBits: 2048 });
 	assert.throws(() => {
@@ -35,13 +51,13 @@ test("[LW-ext.1] a registry lookup is frozen and cannot weaken later imports", (
 	assert.equal(getAlgorithmProperties("PS256").minKeyBits, 2048);
 });
 
-test("a registry lookup of an absent algorithm throws AlgorithmNotAllowed without echoing it", () => {
+test("a lookup of an absent algorithm is refused as ALGORITHM_NOT_ALLOWED without echoing it", () => {
 	for (const alg of ["none", "RS256", "HS1", "", "ed25519", "EVIL<script>"]) {
 		try {
 			getAlgorithmProperties(alg);
 			assert.fail(`${alg} should have been refused`);
 		} catch (error) {
-			assert.ok(error instanceof AlgorithmNotAllowed, alg);
+			assert.ok(error instanceof JWTError && error.code === "ALGORITHM_NOT_ALLOWED", alg);
 			assert.equal(error.code, "ALGORITHM_NOT_ALLOWED");
 			if (alg.length > 0) assert.ok(!error.message.includes(alg), alg);
 		}
@@ -135,7 +151,7 @@ test("parseJsonObject refuses a member name that appears twice, at any depth and
 		assert.throws(
 			() => parseJsonObject(text, "header"),
 			(error: unknown) =>
-				error instanceof JWTInvalid && /duplicate JSON key/.test(error.message),
+				error instanceof JWTError && error.code === "JWT_INVALID" && /duplicate JSON key/.test(error.message),
 			text
 		);
 	}
@@ -151,9 +167,9 @@ test("parseJsonObject allows the same name in sibling objects and as a value", (
 
 test("parseJsonObject refuses JSON that is not an object, and text that is not JSON", () => {
 	for (const text of ["[]", "[{}]", "null", "1", "\"str\"", "true"]) {
-		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+		assert.throws(() => parseJsonObject(text, "header"), refusal("JWT_INVALID"), text);
 	}
 	for (const text of ["", "{", "{'a':1}", "{\"a\":1,}", "\uFEFF{}"]) {
-		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+		assert.throws(() => parseJsonObject(text, "header"), refusal("JWT_INVALID"), text);
 	}
 });

@@ -12,6 +12,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import {
 	SignJWT as JoseSignJWT,
 	jwtVerify as joseJwtVerify,
@@ -26,7 +27,6 @@ import { EncryptJWT } from "../../src/jwt/encrypt.js";
 import { jwtDecrypt } from "../../src/jwt/decrypt.js";
 import { defineDecryptionProfile } from "../../src/jwt/decryption_profile.js";
 import { generateDirectKey } from "../../src/key/encryption.js";
-import { JWTInvalid, MissingClaim } from "../../src/util/errors.js";
 
 const ISSUER = "https://auth.example.com";
 const AUDIENCE = "https://api.example.com";
@@ -80,7 +80,7 @@ test("valid JOSE, invalid Lacewing: a token without typ is rejected", async () =
 	const token = await joseBuilder()
 		.setProtectedHeader({ alg: "EdDSA" })
 		.sign(privateKey.key as CryptoKey);
-	await assert.rejects(jwtVerify(token, profile), JWTInvalid);
+	await assert.rejects(jwtVerify(token, profile), refusal("JWT_INVALID"));
 });
 
 test("valid JOSE, invalid Lacewing: a token without exp is rejected", async () => {
@@ -90,7 +90,7 @@ test("valid JOSE, invalid Lacewing: a token without exp is rejected", async () =
 		.setAudience(AUDIENCE)
 		.setIssuedAt()
 		.sign(privateKey.key as CryptoKey);
-	await assert.rejects(jwtVerify(token, profile), MissingClaim);
+	await assert.rejects(jwtVerify(token, profile), refusal("MISSING_CLAIM"));
 });
 
 // JWE: encrypted tokens (same additive-strictness contract)
@@ -145,7 +145,7 @@ test("[LW-enc.3] valid JOSE, invalid Lacewing: an encrypted token without typ is
 	const token = await joseEncryptBuilder()
 		.setProtectedHeader({ alg: "dir", enc: "A256GCM" })
 		.encrypt(dirKeyBytes);
-	await assert.rejects(jwtDecrypt(token, decryptionProfile), JWTInvalid);
+	await assert.rejects(jwtDecrypt(token, decryptionProfile), refusal("JWT_INVALID"));
 });
 
 test("[LW-enc.3] valid JOSE, invalid Lacewing: an encrypted token without exp is rejected", async () => {
@@ -156,5 +156,5 @@ test("[LW-enc.3] valid JOSE, invalid Lacewing: an encrypted token without exp is
 		.setIssuedAt()
 		.setJti("jose-jwe-jti-2")
 		.encrypt(dirKeyBytes);
-	await assert.rejects(jwtDecrypt(token, decryptionProfile), MissingClaim);
+	await assert.rejects(jwtDecrypt(token, decryptionProfile), refusal("MISSING_CLAIM"));
 });

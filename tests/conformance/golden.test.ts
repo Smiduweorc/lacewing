@@ -24,21 +24,10 @@ import {
 	jwtDecrypt,
 	importKey,
 	importEncryptionKey,
-	AlgorithmNotAllowed,
-	JWTInvalid,
-	JWTExpired,
-	JWTClaimValidationFailed,
-	MissingClaim,
+	type JWTErrorCode,
 	type StaticJWK,
 } from "../../index.js";
-
-const ERRORS: Record<string, abstract new (...args: never[]) => Error> = {
-	AlgorithmNotAllowed,
-	JWTInvalid,
-	JWTExpired,
-	JWTClaimValidationFailed,
-	MissingClaim,
-};
+import { refusal } from "../helpers.js";
 
 interface GoldenVector {
 	name: string;
@@ -62,7 +51,7 @@ interface GoldenVector {
 	relatedRequirements: string[];
 	expect:
 		| { outcome: "accept"; claims?: Record<string, unknown> }
-		| { outcome: "reject"; error: keyof typeof ERRORS; code?: string };
+		| { outcome: "reject"; code: JWTErrorCode };
 }
 
 const GOLDEN_DIR = join(dirname(fileURLToPath(import.meta.url)), "golden");
@@ -73,7 +62,7 @@ assert.ok(files.length > 0, "the golden-vector directory must not be empty");
 for (const file of files) {
 	const vector = JSON.parse(readFileSync(join(GOLDEN_DIR, file), "utf8")) as GoldenVector;
 	const tags = vector.relatedRequirements.map((id) => `[${id}]`).join("");
-	const verdict = vector.expect.outcome === "accept" ? "accepted" : `rejected with ${vector.expect.error}`;
+	const verdict = vector.expect.outcome === "accept" ? "accepted" : `rejected with ${vector.expect.code}`;
 
 	test(`${tags} golden/${file}: ${vector.name} - ${verdict}`, async (t) => {
 		// Golden tokens carry fixed timestamps; pin the clock so they never rot.
@@ -114,15 +103,6 @@ for (const file of files) {
 			return;
 		}
 
-		const { error, code } = vector.expect;
-		const ErrorClass = ERRORS[error];
-		assert.ok(ErrorClass, `${file}: unknown expected error "${error}"`);
-		await assert.rejects(outcome, (thrown) => {
-			assert.ok(thrown instanceof ErrorClass, `${file}: expected ${error}, got ${(thrown as Error)?.constructor?.name}`);
-			if (code !== undefined) {
-				assert.equal((thrown as { code?: string }).code, code, `${file}: wrong error code`);
-			}
-			return true;
-		});
+		await assert.rejects(outcome, refusal(vector.expect.code));
 	});
 }

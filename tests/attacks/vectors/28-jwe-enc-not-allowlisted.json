@@ -4,7 +4,6 @@
 	"attacks": "content-encryption downgrade to an algorithm the profile did not allowlist",
 	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.1",
 	"relatedRequirements": ["8725-3.1.1", "LW-enc.2"],
-	"expectedError": "AlgorithmNotAllowed",
 	"expectedCode": "ALGORITHM_NOT_ALLOWED",
 	"target": "decrypt",
 	"recipe": { "kind": "jweEncrypted", "enc": "A128CBC-HS256" }

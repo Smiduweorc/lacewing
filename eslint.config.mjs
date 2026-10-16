@@ -44,6 +44,23 @@ export default tseslint.config(
 		},
 	},
 	{
+		// The library runs in browsers, workers, Deno and Bun as well as Node,
+		// so its source reaches for web APIs only (globalThis.crypto,
+		// TextEncoder, Uint8Array). Tests and tools are Node programs.
+		files: ["src/**/*.ts", "index.ts"],
+		rules: {
+			"no-restricted-imports": [
+				"error",
+				{ patterns: [{ group: ["node:*"], message: "Library source must not depend on Node built-ins." }] },
+			],
+			"no-restricted-globals": [
+				"error",
+				{ name: "Buffer", message: "Use Uint8Array, TextEncoder and TextDecoder." },
+				{ name: "process", message: "Libraries take configuration as options, never from the process." },
+			],
+		},
+	},
+	{
 		// The compliance gate and its runner are CLIs: printing to the console
 		// is their whole job.
 		files: ["tools/**/*.ts"],

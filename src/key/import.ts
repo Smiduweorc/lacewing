@@ -7,12 +7,8 @@
  */
 
 import { importJWK, importPKCS8, importSPKI } from "jose";
-import {
-	EntropyCheckFailed,
-	KeyImportFailed,
-	KeyTypeMismatch,
-} from "../util/errors.js";
-import { getAlgorithmProperties, type AlgorithmInfo } from "../lib/algorithms.js";
+import { JWTError } from "../util/errors.js";
+import { resolveAlgorithm, type AlgorithmInfo } from "../lib/algorithms.js";
 import { validateHMACSecret } from "../lib/entropy.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import {
@@ -26,7 +22,7 @@ import {
 export type KeyMaterial = StaticJWK | string | Uint8Array | CryptoKey;
 
 function expectedWebCryptoName(alg: string, info: AlgorithmInfo): string {
-	// Both `EdDSA` and `Ed25519` name the one OKP curve in the registry.
+	// Both `EdDSA` and `Ed25519` name the one OKP curve Lacewing speaks.
 	if (info.kty === "OKP") return "Ed25519";
 	if (info.kty === "EC") return "ECDSA";
 	if (info.kty === "oct") return "HMAC";
@@ -41,22 +37,25 @@ function keyTypeOfJwk(jwk: StaticJWK): "public" | "private" {
 
 function assertJwkMatches(jwk: StaticJWK, alg: string, info: AlgorithmInfo): void {
 	if (jwk.kty !== info.kty) {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			`Key type "${jwk.kty}" cannot be used with ${alg} (expected ${info.kty})`
 		);
 	}
 	if (info.crv !== undefined && jwk.crv !== info.crv) {
-		throw new KeyTypeMismatch(`${alg} requires curve ${info.crv}`);
+		throw new JWTError("KEY_TYPE_MISMATCH", `${alg} requires curve ${info.crv}`);
 	}
 	if (typeof jwk.alg === "string" && jwk.alg !== alg) {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			"JWK declares a different algorithm than it is being imported for"
 		);
 	}
 	if (info.kty === "RSA" && typeof jwk.n === "string") {
 		const modulusBits = decodeBase64url(jwk.n).length * 8;
 		if (modulusBits < info.minKeyBits) {
-			throw new KeyTypeMismatch(
+			throw new JWTError(
+				"KEY_TYPE_MISMATCH",
 				`${alg} requires an RSA modulus of at least ${info.minKeyBits} bits`
 			);
 		}
@@ -66,16 +65,17 @@ function assertJwkMatches(jwk: StaticJWK, alg: string, info: AlgorithmInfo): voi
 function assertCryptoKeyMatches(key: CryptoKey, alg: string, info: AlgorithmInfo): void {
 	const algorithm = key.algorithm as { name: string; namedCurve?: string };
 	if (algorithm.name !== expectedWebCryptoName(alg, info)) {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			`CryptoKey algorithm "${algorithm.name}" cannot be used with ${alg}`
 		);
 	}
 	if (info.kty === "EC" && algorithm.namedCurve !== info.crv) {
-		throw new KeyTypeMismatch(`${alg} requires curve ${info.crv}`);
+		throw new JWTError("KEY_TYPE_MISMATCH", `${alg} requires curve ${info.crv}`);
 	}
 }
 
-function importSecret(material: KeyMaterial, alg: string): { key: Uint8Array } {
+function importSecret(material: KeyMaterial, info: AlgorithmInfo): { key: Uint8Array } {
 	let secret: Uint8Array;
 	if (material instanceof Uint8Array) {
 		secret = material;
@@ -83,7 +83,8 @@ function importSecret(material: KeyMaterial, alg: string): { key: Uint8Array } {
 		// RS256->HS256 key-confusion defense (CVE-2016-5431 class): a PEM -
 		// typically the issuer's *public* key - is never a valid HMAC secret.
 		if (material.includes("-----BEGIN")) {
-			throw new KeyTypeMismatch(
+			throw new JWTError(
+				"KEY_TYPE_MISMATCH",
 				"PEM key material cannot be used as an HMAC secret"
 			);
 		}
@@ -97,11 +98,12 @@ function importSecret(material: KeyMaterial, alg: string): { key: Uint8Array } {
 	) {
 		secret = decodeBase64url(material.k);
 	} else {
-		throw new KeyImportFailed(
+		throw new JWTError(
+			"KEY_IMPORT_FAILED",
 			"HMAC secrets must be a Uint8Array, string, or oct JWK"
 		);
 	}
-	validateHMACSecret(secret, alg);
+	validateHMACSecret(secret, info);
 	return { key: secret };
 }
 
@@ -114,7 +116,7 @@ async function importAsymmetric(
 		assertCryptoKeyMatches(material, alg, info);
 		const keyType = material.type;
 		if (keyType !== "public" && keyType !== "private") {
-			throw new KeyTypeMismatch(`A secret key cannot be used with ${alg}`);
+			throw new JWTError("KEY_TYPE_MISMATCH", `A secret key cannot be used with ${alg}`);
 		}
 		return { key: material, keyType };
 	}
@@ -125,12 +127,13 @@ async function importAsymmetric(
 		if (material.includes("-----BEGIN PUBLIC KEY-----")) {
 			return { key: await importSPKI(material, alg), keyType: "public" };
 		}
-		throw new KeyImportFailed(
+		throw new JWTError(
+			"KEY_IMPORT_FAILED",
 			"Unsupported PEM - only PKCS#8 private keys and SPKI public keys are accepted"
 		);
 	}
 	if (material instanceof Uint8Array) {
-		throw new KeyTypeMismatch(`Raw bytes cannot be used with ${alg}`);
+		throw new JWTError("KEY_TYPE_MISMATCH", `Raw bytes cannot be used with ${alg}`);
 	}
 	if (typeof material === "object" && material !== null) {
 		assertJwkMatches(material, alg, info);
@@ -140,38 +143,43 @@ async function importAsymmetric(
 		);
 		return { key, keyType: keyTypeOfJwk(material) };
 	}
-	throw new KeyImportFailed("Unsupported key material");
+	throw new JWTError("KEY_IMPORT_FAILED", "Unsupported key material");
 }
 
 /**
  * Import key material and bind it to `algorithm`. The returned
  * {@link LacewingKey} can only ever be used with that algorithm.
  *
- * Throws {@link KeyTypeMismatch} when material and algorithm disagree,
- * {@link EntropyCheckFailed} for weak HMAC secrets, and
- * {@link KeyImportFailed} for anything else that goes wrong.
+ * `algorithm` is a name from the default set (`"EdDSA"`, `"ES256"`,
+ * `"PS256"`, `"HS256"`, ...) or a legacy descriptor from
+ * `lacewing/legacy/rsa`: `importKey(pem, LEGACY_RS256)`.
+ *
+ * Throws `KEY_TYPE_MISMATCH` when material and algorithm disagree,
+ * `ENTROPY_CHECK_FAILED` for weak HMAC secrets, and
+ * `KEY_IMPORT_FAILED` for anything else that goes wrong.
  */
 export async function importKey<const Alg extends string>(
 	material: KeyMaterial,
-	algorithm: Alg
+	algorithm: Alg | AlgorithmInfo<Alg>
 ): Promise<LacewingKey<Alg>> {
-	const info = getAlgorithmProperties(algorithm);
-	const alg = SetAlg(algorithm) as Alg & ReturnType<typeof SetAlg>;
+	const info = resolveAlgorithm(algorithm);
+	const alg = SetAlg(info.name) as Alg & ReturnType<typeof SetAlg>;
 	try {
 		if (info.kty === "oct") {
-			const { key } = importSecret(material, algorithm);
+			const { key } = importSecret(material, info);
 			return createLacewingKey(alg, "secret", key);
 		}
-		const { key, keyType } = await importAsymmetric(material, algorithm, info);
+		const { key, keyType } = await importAsymmetric(material, info.name, info);
 		return createLacewingKey(alg, keyType, key);
 	} catch (cause) {
 		if (
-			cause instanceof KeyTypeMismatch ||
-			cause instanceof EntropyCheckFailed ||
-			cause instanceof KeyImportFailed
+			cause instanceof JWTError &&
+			(cause.code === "KEY_TYPE_MISMATCH" ||
+				cause.code === "ENTROPY_CHECK_FAILED" ||
+				cause.code === "KEY_IMPORT_FAILED")
 		) {
 			throw cause;
 		}
-		throw new KeyImportFailed("Key import failed", { cause });
+		throw new JWTError("KEY_IMPORT_FAILED", "Key import failed", { cause });
 	}
 }

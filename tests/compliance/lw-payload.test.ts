@@ -7,7 +7,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SignJWT, PayloadHygieneViolation } from "../../index.js";
+import { refusal } from "../helpers.js";
+import { SignJWT } from "../../index.js";
 import { AUDIENCE, ISSUER, hmac } from "./_shared.js";
 
 function signWith(claim: string, value: unknown): Promise<string> {
@@ -21,26 +22,26 @@ function signWith(claim: string, value: unknown): Promise<string> {
 
 test("[LW-payload.1] claim names matching the sensitive-name heuristic are refused", async () => {
 	for (const name of ["password", "user_secret", "apiKey", "ssn", "creditCard", "cvv", "authorization"]) {
-		await assert.rejects(signWith(name, "anything"), PayloadHygieneViolation, `claim: ${name}`);
+		await assert.rejects(signWith(name, "anything"), refusal("PAYLOAD_HYGIENE_VIOLATION"), `claim: ${name}`);
 	}
 });
 
 test("[LW-payload.1] nesting is not a blind spot - a sensitive name deep in a value is still caught", async () => {
-	await assert.rejects(signWith("profile", { contact: { password: "hunter2" } }), PayloadHygieneViolation);
-	await assert.rejects(signWith("items", [{ ok: 1 }, { apiKey: "x" }]), PayloadHygieneViolation);
+	await assert.rejects(signWith("profile", { contact: { password: "hunter2" } }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	await assert.rejects(signWith("items", [{ ok: 1 }, { apiKey: "x" }]), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 });
 
 test("[LW-payload.2] high-confidence secret *values* are refused (PEM, nested JWT, Luhn card)", async () => {
 	await assert.rejects(
 		signWith("blob", "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----"),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 	await assert.rejects(
 		signWith("upstream", "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 	// 4111111111111111 is the canonical Luhn-valid test Visa number.
-	await assert.rejects(signWith("payment", "4111111111111111"), PayloadHygieneViolation);
+	await assert.rejects(signWith("payment", "4111111111111111"), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 });
 
 test("[LW-payload.1] a false positive can be waived, loudly and per claim", async () => {

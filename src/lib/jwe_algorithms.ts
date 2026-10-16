@@ -15,7 +15,7 @@
  * must be decrypted outside Node.
  */
 
-import { AlgorithmNotAllowed } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { SetAlg, type ValidAlg } from "../types.js";
 
 export interface JweKeyManagementInfo {
@@ -71,20 +71,26 @@ export function isValidContentEncryptionAlgorithm(enc: string): boolean {
 	return contentEncryption.has(enc);
 }
 
-/** Look up a key-management algorithm, or throw {@link AlgorithmNotAllowed}. */
+/** Look up a key-management algorithm, or throw `ALGORITHM_NOT_ALLOWED`. */
 export function getKeyManagementProperties(alg: string): JweKeyManagementInfo {
 	const info = keyManagement.get(alg);
 	if (info === undefined) {
-		throw new AlgorithmNotAllowed("Key-management algorithm is not in the Lacewing allowlist");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Key-management algorithm is not in the Lacewing allowlist"
+		);
 	}
 	return info;
 }
 
-/** Look up a content-encryption algorithm, or throw {@link AlgorithmNotAllowed}. */
+/** Look up a content-encryption algorithm, or throw `ALGORITHM_NOT_ALLOWED`. */
 export function getContentEncryptionProperties(enc: string): JweContentEncryptionInfo {
 	const info = contentEncryption.get(enc);
 	if (info === undefined) {
-		throw new AlgorithmNotAllowed("Content-encryption algorithm is not in the Lacewing allowlist");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Content-encryption algorithm is not in the Lacewing allowlist"
+		);
 	}
 	return info;
 }

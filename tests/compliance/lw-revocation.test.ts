@@ -12,14 +12,10 @@ import {
 	jwtVerify,
 	unsafeDecode,
 	MemoryRevocationStore,
-	JWTRevoked,
-	JWTInvalid,
-	JWTExpired,
-	RevocationCheckFailed,
 	type RevocationStore,
 	type TokenRevocationContext,
 } from "../../index.js";
-import { craftHmacToken, nowSeconds, standardClaims } from "../helpers.js";
+import { craftHmacToken, nowSeconds, standardClaims, refusal } from "../helpers.js";
 import { AUDIENCE, ISSUER, hmac, hmacProfile } from "./_shared.js";
 
 function sign(build: (b: SignJWT) => SignJWT = (b) => b): Promise<string> {
@@ -49,7 +45,7 @@ test("[LW-rev.2] a revoked jti is rejected on the next verification", async () =
 	const { payload } = await jwtVerify(token, profile); // fine before revocation
 
 	revocation.revoke(payload.jti as string, payload.exp);
-	await assert.rejects(jwtVerify(token, profile), JWTRevoked);
+	await assert.rejects(jwtVerify(token, profile), refusal("JWT_REVOKED"));
 });
 
 test("[LW-rev.3] the store is never consulted for a token that fails signature or claims", async () => {
@@ -59,7 +55,7 @@ test("[LW-rev.3] the store is never consulted for a token that fails signature o
 	// Forged signature.
 	const good = await sign();
 	const [h, p] = good.split(".") as [string, string, string];
-	await assert.rejects(jwtVerify(`${h}.${p}.AAAA`, profile), JWTInvalid);
+	await assert.rejects(jwtVerify(`${h}.${p}.AAAA`, profile), refusal("JWT_INVALID"));
 	assert.equal(store.calls.length, 0, "a forged token must not reach the store");
 
 	// Valid signature, but expired - claims fail before the store is asked.
@@ -69,7 +65,7 @@ test("[LW-rev.3] the store is never consulted for a token that fails signature o
 		standardClaims({ iat: now - 600, exp: now - 300 }),
 		hmac.key as Uint8Array
 	);
-	await assert.rejects(jwtVerify(expired, profile), JWTExpired);
+	await assert.rejects(jwtVerify(expired, profile), refusal("JWT_EXPIRED"));
 	assert.equal(store.calls.length, 0, "an expired token must not reach the store");
 
 	// A fully valid token does reach it.
@@ -84,7 +80,7 @@ test("[LW-rev.4] a store that errors fails closed", async () => {
 		},
 	};
 	const token = await sign();
-	await assert.rejects(jwtVerify(token, hmacProfile({ revocation: exploding })), RevocationCheckFailed);
+	await assert.rejects(jwtVerify(token, hmacProfile({ revocation: exploding })), refusal("REVOCATION_CHECK_FAILED"));
 });
 
 test("[LW-rev.4] failing open is possible, but only through a deliberately ugly flag", async () => {

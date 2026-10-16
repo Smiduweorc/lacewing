@@ -1,0 +1,14 @@
+{
+	"name": "__proto__ member in the payload JSON",
+	"description": "A validly-signed payload whose escaped member name decodes to '__proto__'. JSON.parse keeps it as an own property, and a caller that deep-merges the verified claims writes isAdmin onto Object.prototype. Lacewing rejects the member name before the claims are returned.",
+	"attacks": "prototype pollution",
+	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-10744",
+	"relatedRequirements": [],
+	"expectedCode": "JWT_INVALID",
+	"profile": "hmac",
+	"recipe": {
+		"kind": "hmacRaw",
+		"headerJson": "{\"alg\":\"HS256\",\"typ\":\"at+jwt\"}",
+		"payloadJson": "{\"iss\":\"https://auth.example.com\",\"aud\":\"https://api.example.com\",\"sub\":\"user-42\",\"jti\":\"j1\",\"iat\":1000000000,\"exp\":9999999999,\"\\u005f_proto__\":{\"isAdmin\":true}}"
+	}
+}

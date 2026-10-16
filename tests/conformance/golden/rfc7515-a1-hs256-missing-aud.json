@@ -9,5 +9,5 @@
 	"keyAlg": "HS256",
 	"profile": { "typ": "JWT", "issuer": "joe", "audience": "https://api.example.com", "algorithms": ["HS256"], "maxTokenAge": "3650d" },
 	"relatedRequirements": ["8725-3.9.1"],
-	"expect": { "outcome": "reject", "error": "MissingClaim", "code": "MISSING_CLAIM" }
+	"expect": { "outcome": "reject", "code": "MISSING_CLAIM" }
 }

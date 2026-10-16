@@ -16,19 +16,13 @@
  */
 
 import { compactVerify } from "jose";
-import {
-	AlgorithmNotAllowed,
-	JWTInvalid,
-	JWTRevoked,
-	MissingClaim,
-	RevocationCheckFailed,
-} from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
 import { parseJsonObject } from "../lib/json.js";
 import { validateHeader } from "../lib/headers.js";
 import { validateClaims } from "../lib/claims.js";
-import { getAlgorithmProperties } from "../lib/algorithms.js";
+import { findAlgorithm } from "../lib/algorithms.js";
 import { validateHMACSecret } from "../lib/entropy.js";
 import { buildRevocationContext } from "../revocation/store.js";
 import {
@@ -53,7 +47,8 @@ async function resolveKey(
 ): Promise<ResolvedVerificationKey> {
 	if (isLacewingKey(profile.keys)) {
 		if ((profile.keys.algorithm as string) !== (header.alg as string)) {
-			throw new AlgorithmNotAllowed(
+			throw new JWTError(
+				"ALGORITHM_NOT_ALLOWED",
 				"Token algorithm does not match the profile's key"
 			);
 		}
@@ -64,12 +59,14 @@ async function resolveKey(
 	// through the same strength check as `importKey` (§3.1, §3.5).
 	const resolved = await profile.keys.getVerificationKey(header, profile.alg);
 	if ((resolved.alg as string) !== (header.alg as string)) {
-		throw new AlgorithmNotAllowed(
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
 			"Token algorithm does not match the key source's resolved algorithm"
 		);
 	}
-	if (resolved.key instanceof Uint8Array && getAlgorithmProperties(header.alg).kty === "oct") {
-		validateHMACSecret(resolved.key, header.alg);
+	const info = findAlgorithm(header.alg, profile.alg);
+	if (resolved.key instanceof Uint8Array && info.kty === "oct") {
+		validateHMACSecret(resolved.key, info);
 	}
 	return resolved;
 }
@@ -78,8 +75,8 @@ async function resolveKey(
  * Verify a token against a profile. The returned {@link VerifiedJwt} is
  * the only way to obtain one - there is no backdoor.
  *
- * On any failure it throws a typed error ({@link JWTExpired},
- * {@link AlgorithmNotAllowed}, {@link JWTClaimValidationFailed}, ...) and yields
+ * On any failure it throws a {@link JWTError} (`JWT_EXPIRED`,
+ * `ALGORITHM_NOT_ALLOWED`, `JWT_CLAIM_VALIDATION_FAILED`, ...) and yields
  * no partial result. There is no `decode()` and no `ignoreExpiration`.
  *
  * @example
@@ -101,18 +98,18 @@ export async function jwtVerify(
 	profile: ExpectedJwtProfile
 ): Promise<VerifiedJwt> {
 	if (typeof token !== "string" || token.length === 0) {
-		throw new JWTInvalid("Token must be a non-empty string");
+		throw new JWTError("JWT_INVALID", "Token must be a non-empty string");
 	}
 	if (token.length > MAX_TOKEN_LENGTH) {
-		throw new JWTInvalid("Token exceeds the maximum length");
+		throw new JWTError("JWT_INVALID", "Token exceeds the maximum length");
 	}
 	const segments = token.split(".");
 	if (segments.length !== 3) {
-		throw new JWTInvalid("Token must have exactly three segments");
+		throw new JWTError("JWT_INVALID", "Token must have exactly three segments");
 	}
 	const [rawHeader, rawPayload, rawSignature] = segments as [string, string, string];
 	if (rawHeader === "" || rawPayload === "" || rawSignature === "") {
-		throw new JWTInvalid("Token has an empty segment");
+		throw new JWTError("JWT_INVALID", "Token has an empty segment");
 	}
 
 	// Strict decoding is authoritative: Lacewing's canonical base64url and
@@ -128,7 +125,7 @@ export async function jwtVerify(
 			algorithms: [header.alg as string],
 		});
 	} catch (cause) {
-		throw new JWTInvalid("Token signature verification failed", { cause });
+		throw new JWTError("JWT_INVALID", "Token signature verification failed", { cause });
 	}
 
 	const payload = parseSegmentJson(payloadBytes, "payload");
@@ -138,9 +135,10 @@ export async function jwtVerify(
 	// reach the store, so forged input can't probe or flood it.
 	if (profile.revocation !== undefined) {
 		if (typeof payload.jti !== "string") {
-			throw new MissingClaim(
-				"jti",
-				"This profile has a revocation store but the token carries no jti"
+			throw new JWTError(
+				"MISSING_CLAIM",
+				"This profile has a revocation store but the token carries no jti",
+				{ claim: "jti" }
 			);
 		}
 		let revoked: boolean;
@@ -150,14 +148,15 @@ export async function jwtVerify(
 			if (profile.unsafeFailOpenOnRevocationError === true) {
 				revoked = false;
 			} else {
-				throw new RevocationCheckFailed(
+				throw new JWTError(
+					"REVOCATION_CHECK_FAILED",
 					"Revocation store errored - failing closed (LW-rev.4)",
 					{ cause }
 				);
 			}
 		}
 		if (revoked) {
-			throw new JWTRevoked("Token has been revoked");
+			throw new JWTError("JWT_REVOKED", "Token has been revoked");
 		}
 	}
 

@@ -6,18 +6,18 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SignJWT, jwtVerify, MaxLifetimeExceeded, JWTExpired } from "../../index.js";
-import { craftHmacToken, nowSeconds, standardClaims } from "../helpers.js";
+import { SignJWT, jwtVerify } from "../../index.js";
+import { craftHmacToken, nowSeconds, standardClaims, refusal } from "../helpers.js";
 import { AUDIENCE, ISSUER, hmac, hmacProfile } from "./_shared.js";
 
 test("[LW-life.1] sign refuses a lifetime beyond the cap (default 1h)", async () => {
 	await assert.rejects(
 		new SignJWT("at+jwt").issuer(ISSUER).audience(AUDIENCE).expiresIn("3650d").sign(hmac),
-		MaxLifetimeExceeded
+		refusal("MAX_LIFETIME_EXCEEDED")
 	);
 	await assert.rejects(
 		new SignJWT("at+jwt").issuer(ISSUER).audience(AUDIENCE).expiresIn("2h").sign(hmac),
-		MaxLifetimeExceeded
+		refusal("MAX_LIFETIME_EXCEEDED")
 	);
 });
 
@@ -40,5 +40,5 @@ test("[LW-life.2] verify enforces maxTokenAge even when exp is far in the future
 		standardClaims({ iat: now - 3600, exp: now + 10 * 365 * 24 * 3600 }),
 		hmac.key as Uint8Array
 	);
-	await assert.rejects(jwtVerify(longLived, hmacProfile({ maxTokenAge: "15m" })), JWTExpired);
+	await assert.rejects(jwtVerify(longLived, hmacProfile({ maxTokenAge: "15m" })), refusal("JWT_EXPIRED"));
 });

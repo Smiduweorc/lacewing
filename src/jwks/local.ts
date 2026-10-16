@@ -1,19 +1,15 @@
 /**
  * Static (local) JWK Sets.
  *
- * Selection is registry-driven: entries whose `kty`/`alg`/`crv` fall
- * outside what the token's (already allowlisted) algorithm requires are
+ * Selection follows the profile's allowlist: entries whose `kty`/`alg`/`crv`
+ * fall outside what the token's (already allowlisted) algorithm requires are
  * never candidates. `kid` values arriving here have already been
  * sanitized by header validation (§3.10).
  */
 
 import { importJWK } from "jose";
-import {
-	EntropyCheckFailed,
-	JWKSNoMatchingKey,
-	KeyImportFailed,
-} from "../util/errors.js";
-import { getAlgorithmProperties, isValidAlgorithm } from "../lib/algorithms.js";
+import { JWTError } from "../util/errors.js";
+import { findAlgorithm, isKnownAlgorithmName, type AlgorithmInfo } from "../lib/algorithms.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { validateHMACSecret } from "../lib/entropy.js";
 import type {
@@ -22,7 +18,6 @@ import type {
 	ResolvedVerificationKey,
 	StaticJWK,
 	StaticJWKS,
-	ValidAlg,
 } from "../types.js";
 
 /**
@@ -31,17 +26,13 @@ import type {
  * RSA or `oct` key fits every allowlisted algorithm of its type, and using
  * one key under several algorithms is what §3.1 forbids.
  */
-function isUnbound(jwk: StaticJWK, allowed: readonly ValidAlg[]): boolean {
+function isUnbound(jwk: StaticJWK, allowed: readonly AlgorithmInfo[]): boolean {
 	if (jwk.alg !== undefined) return false;
-	const sameFamily = allowed.filter((alg) => {
-		const info = getAlgorithmProperties(alg);
-		return info.kty === jwk.kty && info.crv === undefined;
-	});
+	const sameFamily = allowed.filter((info) => info.kty === jwk.kty && info.crv === undefined);
 	return sameFamily.length > 1;
 }
 
-function isCandidate(jwk: StaticJWK, header: JwtHeader): boolean {
-	const info = getAlgorithmProperties(header.alg);
+function isCandidate(jwk: StaticJWK, header: JwtHeader, info: AlgorithmInfo): boolean {
 	if (jwk.kty !== info.kty) return false;
 	if (jwk.use !== undefined && jwk.use !== "sig") return false;
 	if (jwk.alg !== undefined && jwk.alg !== (header.alg as string)) return false;
@@ -63,24 +54,27 @@ export interface ResolveFromJwksOptions {
 export async function resolveFromJwks(
 	keys: readonly StaticJWK[],
 	header: JwtHeader,
-	allowed: readonly ValidAlg[],
+	allowed: readonly AlgorithmInfo[],
 	options: ResolveFromJwksOptions = {}
 ): Promise<ResolvedVerificationKey> {
 	const allowSymmetric = options.allowSymmetric ?? true;
+	const info = findAlgorithm(header.alg, allowed);
 	const matching = keys.filter(
-		(jwk) => isCandidate(jwk, header) && (allowSymmetric || jwk.kty !== "oct")
+		(jwk) => isCandidate(jwk, header, info) && (allowSymmetric || jwk.kty !== "oct")
 	);
 	const candidates = matching.filter((jwk) => !isUnbound(jwk, allowed));
 	if (candidates.length === 0) {
-		throw new JWKSNoMatchingKey(
+		throw new JWTError(
+			"JWKS_NO_MATCHING_KEY",
 			matching.length === 0
 				? "No key in the JWKS matches this token"
 				: "A matching JWKS key has no alg and the profile allows several " +
-						"algorithms for its key type; set alg on the key"
+				"algorithms for its key type; set alg on the key"
 		);
 	}
 	if (candidates.length > 1) {
-		throw new JWKSNoMatchingKey(
+		throw new JWTError(
+			"JWKS_NO_MATCHING_KEY",
 			"Multiple keys in the JWKS match this token - issue tokens with a kid"
 		);
 	}
@@ -88,10 +82,10 @@ export async function resolveFromJwks(
 	try {
 		if (jwk.kty === "oct") {
 			if (typeof jwk.k !== "string") {
-				throw new KeyImportFailed("oct JWK is missing its key material");
+				throw new JWTError("KEY_IMPORT_FAILED", "oct JWK is missing its key material");
 			}
 			const secret = decodeBase64url(jwk.k);
-			validateHMACSecret(secret, header.alg);
+			validateHMACSecret(secret, info);
 			return { alg: header.alg, key: secret };
 		}
 		const key = await importJWK(
@@ -100,10 +94,10 @@ export async function resolveFromJwks(
 		);
 		return { alg: header.alg, key };
 	} catch (cause) {
-		if (cause instanceof KeyImportFailed || cause instanceof EntropyCheckFailed) {
+		if (cause instanceof JWTError && (cause.code === "KEY_IMPORT_FAILED" || cause.code === "ENTROPY_CHECK_FAILED")) {
 			throw cause;
 		}
-		throw new KeyImportFailed("JWKS key could not be imported", { cause });
+		throw new JWTError("KEY_IMPORT_FAILED", "JWKS key could not be imported", { cause });
 	}
 }
 
@@ -120,15 +114,17 @@ export function validateJwksShape(jwks: unknown): StaticJWK[] {
 	if (keys.length > 1000) {
 		throw new TypeError("JWKS has an unreasonable number of keys");
 	}
-	// Entries outside the registry are dropped, not fatal: real-world JWKS
-	// documents routinely carry keys for algorithms we refuse to speak.
+	// Entries for algorithms Lacewing has no descriptor for are dropped, not
+	// fatal: real-world JWKS documents routinely carry keys for algorithms we
+	// refuse to speak. A legacy RS256 entry is kept: it can only ever match a
+	// token whose alg the profile allowlisted, so it widens nothing.
 	return keys.filter(
 		(jwk) =>
 			typeof jwk === "object" &&
 			jwk !== null &&
 			typeof jwk.kty === "string" &&
 			(jwk.alg === undefined ||
-				(typeof jwk.alg === "string" && isValidAlgorithm(jwk.alg)))
+				(typeof jwk.alg === "string" && isKnownAlgorithmName(jwk.alg)))
 	);
 }
 
@@ -138,7 +134,7 @@ export function createLocalJWKSet(jwks: StaticJWKS): KeySource {
 	return {
 		getVerificationKey(
 			header: JwtHeader,
-			allowedAlgorithms: readonly ValidAlg[]
+			allowedAlgorithms: readonly AlgorithmInfo[]
 		): Promise<ResolvedVerificationKey> {
 			return resolveFromJwks(keys, header, allowedAlgorithms);
 		},

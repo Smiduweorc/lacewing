@@ -9,18 +9,13 @@
  *   failing, then verification fails closed (LW-jwks.2)
  * - the response byte budget is enforced while reading, not after
  * - symmetric (`oct`) entries are refused: a JWKS endpoint is public
- * - entries outside the registry are dropped
+ * - entries for algorithms Lacewing has no descriptor for are dropped
  */
 
-import { JWKSFetchFailed, JWKSNoMatchingKey } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { resolveFromJwks, validateJwksShape } from "./local.js";
-import type {
-	JwtHeader,
-	KeySource,
-	ResolvedVerificationKey,
-	StaticJWK,
-	ValidAlg,
-} from "../types.js";
+import type { AlgorithmInfo } from "../lib/algorithms.js";
+import type { JwtHeader, KeySource, ResolvedVerificationKey, StaticJWK } from "../types.js";
 
 const DEFAULT_CACHE_TTL_SECONDS = 300;
 const DEFAULT_COOLDOWN_SECONDS = 30;
@@ -43,7 +38,12 @@ export interface RemoteJWKSetOptions {
 	 * keep the endpoint unreachable. `0` disables stale serving entirely.
 	 */
 	staleWhileErrorSeconds?: number;
-	/** Fetch implementation override - intended for tests. */
+	/**
+	 * Fetch implementation to use instead of the global `fetch`. Whatever it
+	 * throws reaches the caller unchanged, so a failure in your own transport
+	 * stays distinguishable from a Lacewing refusal; only a failure of the
+	 * global `fetch` becomes a `JWKS_FETCH_FAILED` error.
+	 */
 	fetch?: typeof fetch;
 }
 
@@ -73,7 +73,7 @@ async function readCappedText(response: Response, maxBytes: number): Promise<str
 	if (declared !== null) {
 		const length = Number(declared);
 		if (Number.isFinite(length) && length > maxBytes) {
-			throw new JWKSFetchFailed("JWKS response exceeds the size cap");
+			throw new JWTError("JWKS_FETCH_FAILED", "JWKS response exceeds the size cap");
 		}
 	}
 	const body = response.body;
@@ -90,7 +90,7 @@ async function readCappedText(response: Response, maxBytes: number): Promise<str
 			if (done) break;
 			received += value.byteLength;
 			if (received > maxBytes) {
-				throw new JWKSFetchFailed("JWKS response exceeds the size cap");
+				throw new JWTError("JWKS_FETCH_FAILED", "JWKS response exceeds the size cap");
 			}
 			text += decoder.decode(value, { stream: true });
 		}
@@ -110,7 +110,7 @@ export function createRemoteJWKSet(
 	if (jwksUrl.protocol !== "https:") {
 		throw new TypeError("JWKS URLs must use https");
 	}
-	const fetchImpl = options.fetch ?? fetch;
+	const callerFetch = options.fetch;
 	const fallbackTtl = options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
 	const cooldownMs = (options.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS) * 1000;
 	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -129,31 +129,47 @@ export function createRemoteJWKSet(
 
 	async function fetchJwks(): Promise<void> {
 		lastAttemptMs = Date.now();
+		const init: RequestInit = {
+			redirect: "error",
+			headers: { accept: "application/jwk-set+json, application/json" },
+			signal: AbortSignal.timeout(timeoutMs),
+		};
 		let response: Response;
-		try {
-			response = await fetchImpl(jwksUrl, {
-				redirect: "error",
-				headers: { accept: "application/jwk-set+json, application/json" },
-				signal: AbortSignal.timeout(timeoutMs),
-			});
-		} catch (cause) {
-			throw new JWKSFetchFailed("JWKS endpoint could not be reached", { cause });
+		if (callerFetch !== undefined) {
+			response = await callerFetch(jwksUrl, init);
+		} else {
+			try {
+				response = await fetch(jwksUrl, init);
+			} catch (cause) {
+				throw new JWTError(
+					"JWKS_FETCH_FAILED",
+					"JWKS endpoint could not be reached",
+					{ cause }
+				);
+			}
 		}
 		if (!response.ok) {
-			throw new JWKSFetchFailed(`JWKS endpoint responded with status ${response.status}`);
+			throw new JWTError(
+				"JWKS_FETCH_FAILED",
+				`JWKS endpoint responded with status ${response.status}`
+			);
 		}
 		const body = await readCappedText(response, MAX_RESPONSE_BYTES);
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(body);
 		} catch (cause) {
-			throw new JWKSFetchFailed("JWKS response is not valid JSON", { cause });
+			throw new JWTError("JWKS_FETCH_FAILED", "JWKS response is not valid JSON", { cause });
 		}
 		let keys: StaticJWK[];
 		try {
 			keys = validateJwksShape(parsed);
 		} catch (cause) {
-			throw new JWKSFetchFailed("JWKS response is not a valid key set", { cause });
+			throw new JWTError(
+				"JWKS_FETCH_FAILED",
+				"JWKS response is not a valid key set",
+				{ cause }
+			);
 		}
 		cachedKeys = keys;
 		lastSuccessMs = Date.now();
@@ -186,7 +202,8 @@ export function createRemoteJWKSet(
 			// In cooldown: serve stale keys if they are still inside the
 			// stale-while-error window, otherwise fail closed.
 			if (staleServable()) return;
-			throw new JWKSFetchFailed(
+			throw new JWTError(
+				"JWKS_FETCH_FAILED",
 				cachedKeys === undefined
 					? "JWKS fetch is cooling down after a recent failure"
 					: "JWKS keys are stale beyond the stale-while-error window"
@@ -205,7 +222,7 @@ export function createRemoteJWKSet(
 	return {
 		async getVerificationKey(
 			header: JwtHeader,
-			allowedAlgorithms: readonly ValidAlg[]
+			allowedAlgorithms: readonly AlgorithmInfo[]
 		): Promise<ResolvedVerificationKey> {
 			await ensureFresh();
 			try {
@@ -216,7 +233,8 @@ export function createRemoteJWKSet(
 				// Unknown kid may mean the signer rotated keys: refetch once
 				// (respecting the cooldown), then fail closed.
 				const canRetry =
-					error instanceof JWKSNoMatchingKey &&
+					error instanceof JWTError &&
+					error.code === "JWKS_NO_MATCHING_KEY" &&
 					Date.now() - lastAttemptMs >= cooldownMs;
 				if (!canRetry) throw error;
 				await refresh();
