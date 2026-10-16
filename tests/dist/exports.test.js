@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { execPath } from "node:process";
+import { env, execPath, platform } from "node:process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -82,11 +82,14 @@ test("importing every entry point adds no globals and prints nothing", () => {
 });
 
 test("the tarball holds dist/ and the documents, and no source or tests", () => {
-	const run = spawnSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
-		cwd: ROOT,
-		encoding: "utf8",
-	});
-	assert.equal(run.status, 0, run.stderr);
+	// On Windows npm is npm.cmd, which Node refuses to spawn without a shell.
+	// Under `npm run` npm_execpath is npm's own JS entry, so run that instead.
+	const args = ["pack", "--dry-run", "--json", "--ignore-scripts"];
+	const npmCli = env.npm_execpath;
+	const run = npmCli && /\.c?js$/.test(npmCli)
+		? spawnSync(execPath, [npmCli, ...args], { cwd: ROOT, encoding: "utf8" })
+		: spawnSync("npm", args, { cwd: ROOT, encoding: "utf8", shell: platform === "win32" });
+	assert.equal(run.status, 0, run.error?.message ?? run.stderr);
 	// npm 10 prints an array of packs, npm 11 an object keyed by package name.
 	const packed = JSON.parse(run.stdout);
 	const files = (Array.isArray(packed) ? packed[0] : packed[manifest.name]).files.map(
