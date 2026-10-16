@@ -4,7 +4,6 @@
 	"attacks": "signature forgery",
 	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2022-21449",
 	"relatedRequirements": ["8725-3.4.1"],
-	"expectedError": "JWTInvalid",
 	"expectedCode": "JWT_INVALID",
 	"profile": "es256",
 	"recipe": { "kind": "unsigned", "header": { "alg": "ES256", "typ": "at+jwt" }, "signature": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" }

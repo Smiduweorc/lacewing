@@ -1,16 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../../helpers.js";
 import { exportJWK as joseExportJWK, generateKeyPair as joseGenerateKeyPair } from "jose";
 import { importKey } from "../../../src/key/import.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
 import { exportKeyJWK, exportKeyPEM } from "../../../src/key/export.js";
-import {
-	AlgorithmNotAllowed,
-	EntropyCheckFailed,
-	KeyExportFailed,
-	KeyImportFailed,
-	KeyTypeMismatch,
-} from "../../../src/util/errors.js";
 import type { StaticJWK } from "../../../src/types.js";
 
 async function es256Jwks(): Promise<{ publicJwk: StaticJWK; privateJwk: StaticJWK }> {
@@ -33,42 +27,42 @@ test("[8725-3.1.2] importKey binds the key to one algorithm", async () => {
 
 test("[8725-3.1.2] an EC JWK cannot be imported for a different key family", async () => {
 	const { publicJwk } = await es256Jwks();
-	await assert.rejects(importKey(publicJwk, "HS256"), KeyImportFailed);
-	await assert.rejects(importKey(publicJwk, "PS256"), KeyTypeMismatch);
-	await assert.rejects(importKey(publicJwk, "EdDSA"), KeyTypeMismatch);
+	await assert.rejects(importKey(publicJwk, "HS256"), refusal("KEY_IMPORT_FAILED"));
+	await assert.rejects(importKey(publicJwk, "PS256"), refusal("KEY_TYPE_MISMATCH"));
+	await assert.rejects(importKey(publicJwk, "EdDSA"), refusal("KEY_TYPE_MISMATCH"));
 });
 
 test("[8725-3.1.2] curve mismatches are rejected", async () => {
 	const { publicJwk } = await es256Jwks();
-	await assert.rejects(importKey(publicJwk, "ES384"), KeyTypeMismatch);
+	await assert.rejects(importKey(publicJwk, "ES384"), refusal("KEY_TYPE_MISMATCH"));
 });
 
 test("a JWK declaring a conflicting alg is rejected", async () => {
 	const { publicJwk } = await es256Jwks();
 	await assert.rejects(
 		importKey({ ...publicJwk, alg: "ES384" }, "ES256"),
-		KeyTypeMismatch
+		refusal("KEY_TYPE_MISMATCH")
 	);
 });
 
 test("[8725-3.2.2] 'none' and legacy algorithms are not importable", async () => {
 	const { publicJwk } = await es256Jwks();
-	await assert.rejects(importKey(publicJwk, "none"), AlgorithmNotAllowed);
-	await assert.rejects(importKey(publicJwk, "RS256"), AlgorithmNotAllowed);
+	await assert.rejects(importKey(publicJwk, "none"), refusal("ALGORITHM_NOT_ALLOWED"));
+	await assert.rejects(importKey(publicJwk, "RS256"), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
 test("[8725-3.5.2] weak HMAC secrets are rejected at import", async () => {
-	await assert.rejects(importKey("secret123", "HS256"), EntropyCheckFailed);
+	await assert.rejects(importKey("secret123", "HS256"), refusal("ENTROPY_CHECK_FAILED"));
 	await assert.rejects(
 		importKey("password-password-password-password", "HS256"),
-		EntropyCheckFailed
+		refusal("ENTROPY_CHECK_FAILED")
 	);
 });
 
 test("[8725-3.1.2] PEM key material is never accepted as an HMAC secret (CVE-2016-5431 class)", async () => {
 	const { publicKey } = await generateKeyPair("ES256", { extractable: true });
 	const pem = await exportKeyPEM(publicKey);
-	await assert.rejects(importKey(pem, "HS256"), KeyTypeMismatch);
+	await assert.rejects(importKey(pem, "HS256"), refusal("KEY_TYPE_MISMATCH"));
 });
 
 test("strong HMAC secrets import as secret keys", async () => {
@@ -93,7 +87,7 @@ test("PEM round-trip: private -> PKCS#8, public -> SPKI", async () => {
 test("unsupported PEM types are rejected", async () => {
 	await assert.rejects(
 		importKey("-----BEGIN RSA PRIVATE KEY-----\nAAAA\n-----END RSA PRIVATE KEY-----", "PS256"),
-		KeyImportFailed
+		refusal("KEY_IMPORT_FAILED")
 	);
 });
 
@@ -106,8 +100,8 @@ test("generateKeyPair defaults to EdDSA (asymmetric-first)", async () => {
 });
 
 test("generateKeyPair refuses symmetric algorithms and vice versa", async () => {
-	await assert.rejects(generateKeyPair("HS256"), KeyTypeMismatch);
-	assert.throws(() => generateSecret("ES256"), KeyTypeMismatch);
+	await assert.rejects(generateKeyPair("HS256"), refusal("KEY_TYPE_MISMATCH"));
+	assert.throws(() => generateSecret("ES256"), refusal("KEY_TYPE_MISMATCH"));
 });
 
 test("generateSecret produces entropy-valid secrets at the minimum size", async () => {
@@ -121,8 +115,8 @@ test("generateSecret produces entropy-valid secrets at the minimum size", async 
 
 test("keys are non-extractable by default; export fails loudly", async () => {
 	const { privateKey } = await generateKeyPair("EdDSA");
-	await assert.rejects(exportKeyPEM(privateKey), KeyExportFailed);
-	await assert.rejects(exportKeyJWK(privateKey), KeyExportFailed);
+	await assert.rejects(exportKeyPEM(privateKey), refusal("KEY_EXPORT_FAILED"));
+	await assert.rejects(exportKeyJWK(privateKey), refusal("KEY_EXPORT_FAILED"));
 });
 
 test("exported JWKs carry their bound alg and use", async () => {
@@ -137,5 +131,5 @@ test("exported JWKs carry their bound alg and use", async () => {
 });
 
 test("symmetric secrets have no PEM form", async () => {
-	await assert.rejects(exportKeyPEM(generateSecret("HS256")), KeyExportFailed);
+	await assert.rejects(exportKeyPEM(generateSecret("HS256")), refusal("KEY_EXPORT_FAILED"));
 });

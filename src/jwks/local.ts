@@ -8,11 +8,7 @@
  */
 
 import { importJWK } from "jose";
-import {
-	EntropyCheckFailed,
-	JWKSNoMatchingKey,
-	KeyImportFailed,
-} from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { getAlgorithmProperties, isValidAlgorithm } from "../lib/algorithms.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { validateHMACSecret } from "../lib/entropy.js";
@@ -72,15 +68,17 @@ export async function resolveFromJwks(
 	);
 	const candidates = matching.filter((jwk) => !isUnbound(jwk, allowed));
 	if (candidates.length === 0) {
-		throw new JWKSNoMatchingKey(
+		throw new JWTError(
+			"JWKS_NO_MATCHING_KEY",
 			matching.length === 0
 				? "No key in the JWKS matches this token"
 				: "A matching JWKS key has no alg and the profile allows several " +
-						"algorithms for its key type; set alg on the key"
+				"algorithms for its key type; set alg on the key"
 		);
 	}
 	if (candidates.length > 1) {
-		throw new JWKSNoMatchingKey(
+		throw new JWTError(
+			"JWKS_NO_MATCHING_KEY",
 			"Multiple keys in the JWKS match this token - issue tokens with a kid"
 		);
 	}
@@ -88,7 +86,7 @@ export async function resolveFromJwks(
 	try {
 		if (jwk.kty === "oct") {
 			if (typeof jwk.k !== "string") {
-				throw new KeyImportFailed("oct JWK is missing its key material");
+				throw new JWTError("KEY_IMPORT_FAILED", "oct JWK is missing its key material");
 			}
 			const secret = decodeBase64url(jwk.k);
 			validateHMACSecret(secret, header.alg);
@@ -100,10 +98,10 @@ export async function resolveFromJwks(
 		);
 		return { alg: header.alg, key };
 	} catch (cause) {
-		if (cause instanceof KeyImportFailed || cause instanceof EntropyCheckFailed) {
+		if (cause instanceof JWTError && (cause.code === "KEY_IMPORT_FAILED" || cause.code === "ENTROPY_CHECK_FAILED")) {
 			throw cause;
 		}
-		throw new KeyImportFailed("JWKS key could not be imported", { cause });
+		throw new JWTError("KEY_IMPORT_FAILED", "JWKS key could not be imported", { cause });
 	}
 }
 

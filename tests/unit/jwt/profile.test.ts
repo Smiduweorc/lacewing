@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../../helpers.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
-import { AlgorithmNotAllowed } from "../../../src/util/errors.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 
@@ -31,11 +31,11 @@ test("[8725-3.1.1] typ, issuer, audience, algorithms, keys and maxTokenAge are s
 });
 
 test("[8725-3.2.1] the allowlist only accepts registry algorithms", () => {
-	assert.throws(() => defineProfile({ ...base(), algorithms: ["none"] }), AlgorithmNotAllowed);
-	assert.throws(() => defineProfile({ ...base(), algorithms: ["RS256"] }), AlgorithmNotAllowed);
+	assert.throws(() => defineProfile({ ...base(), algorithms: ["none"] }), refusal("ALGORITHM_NOT_ALLOWED"));
+	assert.throws(() => defineProfile({ ...base(), algorithms: ["RS256"] }), refusal("ALGORITHM_NOT_ALLOWED"));
 	assert.throws(
 		() => defineProfile({ ...base(), algorithms: ["EdDSA", "nOnE"] }),
-		AlgorithmNotAllowed
+		refusal("ALGORITHM_NOT_ALLOWED")
 	);
 });
 

@@ -4,7 +4,6 @@
 	"attacks": "prototype pollution",
 	"reference": "https://nvd.nist.gov/vuln/detail/CVE-2019-10744",
 	"relatedRequirements": [],
-	"expectedError": "JWTInvalid",
 	"expectedCode": "JWT_INVALID",
 	"profile": "hmac",
 	"recipe": {

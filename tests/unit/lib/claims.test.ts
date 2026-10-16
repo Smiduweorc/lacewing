@@ -1,14 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../../src/util/errors.js";
 import { validateClaims } from "../../../src/lib/claims.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { generateSecret } from "../../../src/key/generate.js";
-import {
-	JWTClaimValidationFailed,
-	JWTExpired,
-	MissingClaim,
-} from "../../../src/util/errors.js";
-import { nowSeconds, standardClaims } from "../../helpers.js";
+import { nowSeconds, standardClaims, refusal } from "../../helpers.js";
 
 const key = generateSecret("HS256");
 
@@ -31,24 +27,24 @@ test("a well-formed payload passes", async () => {
 test("[8725-3.8.1] wrong issuer is rejected", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ iss: "https://evil.example.com" }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 });
 
 test("[8725-3.8.1] missing issuer is rejected", async () => {
 	const claims = standardClaims();
 	delete claims.iss;
-	await assert.rejects(validateClaims(claims, makeProfile()), MissingClaim);
+	await assert.rejects(validateClaims(claims, makeProfile()), refusal("MISSING_CLAIM"));
 });
 
 test("[8725-3.9.1] wrong or missing audience is rejected", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ aud: "https://other.example.com" }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 	const claims = standardClaims();
 	delete claims.aud;
-	await assert.rejects(validateClaims(claims, makeProfile()), MissingClaim);
+	await assert.rejects(validateClaims(claims, makeProfile()), refusal("MISSING_CLAIM"));
 });
 
 test("[8725-3.9.1] audience arrays match when they include the expected value", async () => {
@@ -60,12 +56,12 @@ test("[8725-3.9.1] audience arrays match when they include the expected value", 
 	);
 	await assert.rejects(
 		validateClaims(standardClaims({ aud: ["https://cdn.example.com"] }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 	// Non-string entries never match.
 	await assert.rejects(
 		validateClaims(standardClaims({ aud: [42] }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 });
 
@@ -73,7 +69,7 @@ test("expired tokens are rejected; skew is bounded", async () => {
 	const now = nowSeconds();
 	await assert.rejects(
 		validateClaims(standardClaims({ iat: now - 60, exp: now - 30 }), makeProfile()),
-		JWTExpired
+		refusal("JWT_EXPIRED")
 	);
 	// Inside the 5s default skew: still accepted.
 	await assert.doesNotReject(
@@ -84,17 +80,17 @@ test("expired tokens are rejected; skew is bounded", async () => {
 test("missing or non-numeric exp is rejected", async () => {
 	const claims = standardClaims();
 	delete claims.exp;
-	await assert.rejects(validateClaims(claims, makeProfile()), MissingClaim);
+	await assert.rejects(validateClaims(claims, makeProfile()), refusal("MISSING_CLAIM"));
 	await assert.rejects(
 		validateClaims(standardClaims({ exp: "soon" }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 });
 
 test("iat in the future is rejected", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ iat: nowSeconds() + 3600 }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 });
 
@@ -106,14 +102,14 @@ test("[LW-life.2] maxTokenAge is enforced independently of exp", async () => {
 			standardClaims({ iat: now - 7200, exp: now + 315_360_000 }),
 			makeProfile({ maxTokenAge: "15m" })
 		),
-		JWTExpired
+		refusal("JWT_EXPIRED")
 	);
 });
 
 test("future nbf is rejected", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ nbf: nowSeconds() + 3600 }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 	await assert.doesNotReject(
 		validateClaims(standardClaims({ nbf: nowSeconds() - 10 }), makeProfile())
@@ -125,11 +121,11 @@ test("[8725-3.8.2] pinned subject must match", async () => {
 	await assert.doesNotReject(validateClaims(standardClaims(), profile));
 	await assert.rejects(
 		validateClaims(standardClaims({ sub: "user-43" }), profile),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 	const claims = standardClaims();
 	delete claims.sub;
-	await assert.rejects(validateClaims(claims, profile), MissingClaim);
+	await assert.rejects(validateClaims(claims, profile), refusal("MISSING_CLAIM"));
 });
 
 test("custom claim validators run and their failures are typed", async () => {
@@ -144,7 +140,7 @@ test("custom claim validators run and their failures are typed", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ scope: "admin" }), profile),
 		(error: unknown) =>
-			error instanceof JWTClaimValidationFailed && error.claim === "scope"
+			error instanceof JWTError && error.code === "JWT_CLAIM_VALIDATION_FAILED" && error.claim === "scope"
 	);
 });
 
@@ -154,7 +150,7 @@ test("claim validation errors never echo untrusted values", async () => {
 		await validateClaims(standardClaims({ iss: marker }), makeProfile());
 		assert.fail("should have thrown");
 	} catch (error) {
-		assert.ok(error instanceof JWTClaimValidationFailed);
+		assert.ok(error instanceof JWTError && error.code === "JWT_CLAIM_VALIDATION_FAILED");
 		assert.ok(!error.message.includes(marker));
 	}
 });
@@ -162,7 +158,7 @@ test("claim validation errors never echo untrusted values", async () => {
 test("oversized string claims are rejected", async () => {
 	await assert.rejects(
 		validateClaims(standardClaims({ jti: "x".repeat(5000) }), makeProfile()),
-		JWTClaimValidationFailed
+		refusal("JWT_CLAIM_VALIDATION_FAILED")
 	);
 });
 
@@ -187,7 +183,7 @@ test("[LW-life.2] maxTokenAge bounds usable age, not the declared lifetime", asy
 	};
 	await assert.doesNotReject(validateClaims(decade, profile, now));
 	// ...and refused once it is older than the age window (plus default skew).
-	await assert.rejects(validateClaims(decade, profile, now + 700), JWTExpired);
+	await assert.rejects(validateClaims(decade, profile, now + 700), refusal("JWT_EXPIRED"));
 });
 
 test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright", async () => {
@@ -210,7 +206,7 @@ test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright
 	// Within the declared cap: fine.
 	await assert.doesNotReject(validateClaims(payload(1800), profile, now));
 	// A decade-long span is a misissuance signal, refused on sight.
-	await assert.rejects(validateClaims(payload(10 * 365 * 86400), profile, now), JWTClaimValidationFailed);
+	await assert.rejects(validateClaims(payload(10 * 365 * 86400), profile, now), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 	// Opt-in: without it, the same token is only bounded by maxTokenAge.
 	await assert.doesNotReject(validateClaims(payload(10 * 365 * 86400), defineProfile(base), now));
 	assert.throws(() => defineProfile({ ...base, maxTokenLifetime: 0 }), TypeError);

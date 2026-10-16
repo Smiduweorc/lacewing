@@ -6,7 +6,7 @@
  * whitespace tricks. One header, one scheme, one token.
  */
 
-import { BearerParseFailed } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { readHeaderValue, type HeaderSource } from "./source.js";
 
 // RFC 6750 credentials: exact-case scheme, a single SP, one token68.
@@ -16,7 +16,7 @@ const MAX_HEADER_LENGTH = 16384;
 /**
  * Extract the bearer token from an `Authorization` header. Accepts a
  * `Headers` object, anything with a `.headers` (e.g. `Request`), or the
- * raw header value. Throws {@link BearerParseFailed} on anything that
+ * raw header value. Throws `BEARER_PARSE_FAILED` on anything that
  * isn't exactly one well-formed `Bearer <token>`.
  *
  * Note: when multiple `Authorization` headers were sent, `Headers`
@@ -29,14 +29,18 @@ const MAX_HEADER_LENGTH = 16384;
 export function parseBearer(source: HeaderSource): string {
 	const value = readHeaderValue(source, "authorization", "parseBearer");
 	if (typeof value !== "string" || value.length === 0) {
-		throw new BearerParseFailed("Missing Authorization header");
+		throw new JWTError("BEARER_PARSE_FAILED", "Missing Authorization header");
 	}
 	if (value.length > MAX_HEADER_LENGTH) {
-		throw new BearerParseFailed("Authorization header exceeds the maximum length");
+		throw new JWTError(
+			"BEARER_PARSE_FAILED",
+			"Authorization header exceeds the maximum length"
+		);
 	}
 	const match = BEARER.exec(value);
 	if (match === null) {
-		throw new BearerParseFailed(
+		throw new JWTError(
+			"BEARER_PARSE_FAILED",
 			"Authorization header failed strict Bearer parsing (expected exactly \"Bearer <token>\")"
 		);
 	}

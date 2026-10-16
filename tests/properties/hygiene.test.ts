@@ -10,9 +10,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import fc from "fast-check";
 import { scanPayloadForSensitiveData } from "../../src/lib/payload_hygiene.js";
-import { PayloadHygieneViolation } from "../../index.js";
 
 const SENSITIVE = ["password", "secret", "apikey", "ssn", "creditcard", "cvv", "authorization"];
 
@@ -44,7 +44,7 @@ test("[LW-payload.1] a sensitive name at any depth is caught - no nesting blind 
 			// Wrap { <sensitive>: filler } inside `depth` layers of safe objects.
 			let value: unknown = { [word]: filler };
 			for (let i = 0; i < depth; i++) value = { [`wrap_${i}`]: value, sibling: filler };
-			assert.throws(() => scanPayloadForSensitiveData({ data: value }), PayloadHygieneViolation);
+			assert.throws(() => scanPayloadForSensitiveData({ data: value }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 		}),
 		{ numRuns: 60 }
 	);

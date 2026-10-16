@@ -12,7 +12,7 @@
  * `SignJWT.unsafeAllowClaim(name)`.
  */
 
-import { PayloadHygieneViolation } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 
 const SENSITIVE_NAME_FRAGMENTS = [
 	"password",
@@ -105,24 +105,27 @@ function isLuhnValidCardNumber(value: string): boolean {
 
 function checkValue(topLevelClaim: string, value: string): void {
 	if (PEM_PRIVATE_KEY.test(value)) {
-		throw new PayloadHygieneViolation(
-			topLevelClaim,
+		throw new JWTError(
+			"PAYLOAD_HYGIENE_VIOLATION",
 			`Claim "${topLevelClaim}" contains a PEM private-key block. ` +
-				"JWS payloads are readable plaintext - never embed key material."
+				"JWS payloads are readable plaintext - never embed key material.",
+			{ claim: topLevelClaim }
 		);
 	}
 	if (JWT_LIKE.test(value)) {
-		throw new PayloadHygieneViolation(
-			topLevelClaim,
+		throw new JWTError(
+			"PAYLOAD_HYGIENE_VIOLATION",
 			`Claim "${topLevelClaim}" contains what looks like another JWT. ` +
-				"Embedding tokens in tokens leaks credentials to anyone who can read the payload."
+				"Embedding tokens in tokens leaks credentials to anyone who can read the payload.",
+			{ claim: topLevelClaim }
 		);
 	}
 	if (isLuhnValidCardNumber(value)) {
-		throw new PayloadHygieneViolation(
-			topLevelClaim,
+		throw new JWTError(
+			"PAYLOAD_HYGIENE_VIOLATION",
 			`Claim "${topLevelClaim}" contains what looks like a payment card number. ` +
-				"JWS payloads are readable plaintext - never embed cardholder data."
+				"JWS payloads are readable plaintext - never embed cardholder data.",
+			{ claim: topLevelClaim }
 		);
 	}
 }
@@ -142,11 +145,12 @@ function scanNode(topLevelClaim: string, value: unknown): void {
 		for (const [name, nested] of Object.entries(value)) {
 			const fragment = sensitiveNameFragment(name);
 			if (fragment !== undefined) {
-				throw new PayloadHygieneViolation(
-					topLevelClaim,
+				throw new JWTError(
+					"PAYLOAD_HYGIENE_VIOLATION",
 					`Claim "${topLevelClaim}" contains a nested field whose name matches "${fragment}". ` +
 						"JWS payloads are readable plaintext - do not put secrets in tokens. " +
-						"If this is a false positive, waive it with unsafeAllowClaim()."
+						"If this is a false positive, waive it with unsafeAllowClaim().",
+					{ claim: topLevelClaim }
 				);
 			}
 			scanNode(topLevelClaim, nested);
@@ -155,7 +159,7 @@ function scanNode(topLevelClaim: string, value: unknown): void {
 }
 
 /**
- * Scan a payload about to be signed. Throws {@link PayloadHygieneViolation}
+ * Scan a payload about to be signed. Throws `PAYLOAD_HYGIENE_VIOLATION`
  * naming the offending claim (never echoing its value). Claims listed in
  * `allowedClaims` are skipped entirely, subtree included.
  */
@@ -169,11 +173,12 @@ export function scanPayloadForSensitiveData(
 		}
 		const fragment = sensitiveNameFragment(claim);
 		if (fragment !== undefined) {
-			throw new PayloadHygieneViolation(
-				claim,
+			throw new JWTError(
+				"PAYLOAD_HYGIENE_VIOLATION",
 				`Claim name "${claim}" matches the sensitive-name heuristic ("${fragment}"). ` +
 					"JWS payloads are readable plaintext - do not put secrets in tokens. " +
-					"If this is a false positive, waive it with unsafeAllowClaim()."
+					"If this is a false positive, waive it with unsafeAllowClaim().",
+				{ claim }
 			);
 		}
 		scanNode(claim, value);

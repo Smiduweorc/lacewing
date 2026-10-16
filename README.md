@@ -40,8 +40,9 @@ npm install lacewing
 
 [Getting started](./GETTING-STARTED.md) walks through adopting Lacewing in a
 real service: keys, profiles, transport, refresh tokens, revocation, key
-rotation, and a migration path from `jsonwebtoken`. The rest of this README is
-the pitch and the reference.
+rotation, and a migration path from `jsonwebtoken`. Coming from Lacewing 1.x,
+[Migrating](./MIGRATING.md) lists what 2.0 breaks and what to write instead.
+The rest of this README is the pitch and the reference.
 
 ## Quick start
 
@@ -75,7 +76,7 @@ A runnable version of everything in this README ships with the repo: `npm run de
 
 ## Concepts
 
-**Profiles are the central abstraction.** Configuration is something you create once, not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a typed error (`JWTExpired`, `AlgorithmNotAllowed`, `JWTClaimValidationFailed`, ...) and no partial result.
+**Profiles are the central abstraction.** Configuration is something you create once, not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a `JWTError` whose `code` says why (`JWT_EXPIRED`, `ALGORITHM_NOT_ALLOWED`, `JWT_CLAIM_VALIDATION_FAILED`, ...) and no partial result.
 
 **Built on jose.** Lacewing does not reimplement cryptography. It is a hardened policy layer over [jose](https://github.com/panva/jose) (the audited, maintained, runtime-portable JOSE implementation), so the novel code is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs that jose (and any other conforming implementation) can consume, and the conformance suite proves it against the RFC 7515/7516/7519 worked examples plus tokens produced by OpenSSL and python-cryptography.
 
@@ -274,7 +275,7 @@ const token = await newAccessToken()
   .expiresIn("10m")
   .sign(privateKey);
 
-await jwtVerify(token, refresh); // -> JWTClaimValidationFailed (wrong typ)
+await jwtVerify(token, refresh); // -> JWT_CLAIM_VALIDATION_FAILED (wrong typ)
 ```
 
 ### Revocation is built-in, not homework
@@ -286,7 +287,7 @@ const revocation = new MemoryRevocationStore(); // or your Redis/DB adapter (Rev
 const profile = defineProfile({ /* ...as above... */ revocation });
 
 revocation.revoke(payload.jti, payload.exp); // e.g. on logout
-await jwtVerify(token, profile); // -> JWTRevoked
+await jwtVerify(token, profile); // -> JWT_REVOKED
 ```
 
 The store is consulted only *after* signature and claims pass, and store
@@ -457,7 +458,7 @@ import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue
 
 getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
 parseDuration("15m");            // 900, as DurationSeconds
-parseJsonObject(text, "header"); // a plain object, or JWTInvalid; a member named twice, or __proto__/constructor/prototype, is refused
+parseJsonObject(text, "header"); // a plain object, or JWT_INVALID; a member named twice, or __proto__/constructor/prototype, is refused
 readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
 ```
 

@@ -15,14 +15,7 @@
  */
 
 import { compactDecrypt } from "jose";
-import {
-	AlgorithmNotAllowed,
-	JWTClaimValidationFailed,
-	JWTInvalid,
-	JWTRevoked,
-	MissingClaim,
-	RevocationCheckFailed,
-} from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
 import { parseJsonObject } from "../lib/json.js";
@@ -49,39 +42,64 @@ const FORBIDDEN_PARAMS = ["jku", "x5u", "jwk", "x5c", "x5t", "zip", "crit"] as c
 
 function validateJweHeader(raw: Record<string, unknown>, profile: ExpectedDecryptionProfile): JweHeader {
 	for (const param of FORBIDDEN_PARAMS) {
-		if (param in raw) throw new JWTInvalid(`Token header parameter "${param}" is not supported`);
+		if (param in raw) throw new JWTError(
+			"JWT_INVALID",
+			`Token header parameter "${param}" is not supported`
+		);
 	}
 
 	const alg = raw.alg;
 	if (typeof alg !== "string" || alg.toLowerCase() === "none") {
-		throw new AlgorithmNotAllowed("Key-management algorithm 'none' (or a missing alg) is not allowed");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Key-management algorithm 'none' (or a missing alg) is not allowed"
+		);
 	}
 	if (!profile.keyManagementAlgorithms.some((allowed) => (allowed as string) === alg)) {
-		throw new AlgorithmNotAllowed("Token key-management algorithm is not in this profile's allowlist");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Token key-management algorithm is not in this profile's allowlist"
+		);
 	}
 	getKeyManagementProperties(alg); // defense in depth
 
 	const enc = raw.enc;
 	if (typeof enc !== "string" || enc.toLowerCase() === "none") {
-		throw new AlgorithmNotAllowed("Content-encryption algorithm 'none' (or a missing enc) is not allowed");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Content-encryption algorithm 'none' (or a missing enc) is not allowed"
+		);
 	}
 	if (!profile.contentEncryptionAlgorithms.some((allowed) => (allowed as string) === enc)) {
-		throw new AlgorithmNotAllowed("Token content-encryption algorithm is not in this profile's allowlist");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Token content-encryption algorithm is not in this profile's allowlist"
+		);
 	}
 	getContentEncryptionProperties(enc);
 
 	const typ = raw.typ;
 	if (typeof typ !== "string" || typ.length === 0) {
-		throw new JWTInvalid("Token header is missing a typ (explicit typing is mandatory)");
+		throw new JWTError(
+			"JWT_INVALID",
+			"Token header is missing a typ (explicit typing is mandatory)"
+		);
 	}
 	if (normalizeTyp(typ) !== normalizeTyp(profile.typ)) {
-		throw new JWTClaimValidationFailed("typ", "Unexpected token type for this profile");
+		throw new JWTError(
+			"JWT_CLAIM_VALIDATION_FAILED",
+			"Unexpected token type for this profile",
+			{ claim: "typ" }
+		);
 	}
 
 	const header: JweHeader = { alg: SetAlg(alg), enc: SetAlg(enc), typ };
 	if (raw.kid !== undefined) header.kid = sanitizeKid(raw.kid);
 	if (raw.cty !== undefined) {
-		if (typeof raw.cty !== "string") throw new JWTInvalid("Token header cty must be a string");
+		if (typeof raw.cty !== "string") throw new JWTError(
+			"JWT_INVALID",
+			"Token header cty must be a string"
+		);
 		header.cty = raw.cty;
 	}
 	return header;
@@ -97,18 +115,18 @@ export async function jwtDecrypt(
 	profile: ExpectedDecryptionProfile
 ): Promise<DecryptedJwt> {
 	if (typeof token !== "string" || token.length === 0) {
-		throw new JWTInvalid("Token must be a non-empty string");
+		throw new JWTError("JWT_INVALID", "Token must be a non-empty string");
 	}
 	if (token.length > MAX_TOKEN_LENGTH) {
-		throw new JWTInvalid("Token exceeds the maximum length");
+		throw new JWTError("JWT_INVALID", "Token exceeds the maximum length");
 	}
 	const segments = token.split(".");
 	if (segments.length !== 5) {
 		// A JWS has three segments; anything but five is not a compact JWE.
-		throw new JWTInvalid("Token is not a compact JWE (expected five segments)");
+		throw new JWTError("JWT_INVALID", "Token is not a compact JWE (expected five segments)");
 	}
 	const rawHeader = segments[0] as string;
-	if (rawHeader === "") throw new JWTInvalid("Token has an empty header segment");
+	if (rawHeader === "") throw new JWTError("JWT_INVALID", "Token has an empty header segment");
 
 	const header = validateJweHeader(
 		parseJsonObject(decodeUTF8(decodeBase64url(rawHeader)), "header"),
@@ -128,7 +146,10 @@ export async function jwtDecrypt(
 	}
 
 	if ((profile.key.algorithm as string) !== (header.alg as string)) {
-		throw new AlgorithmNotAllowed("Token key-management algorithm does not match the profile's key");
+		throw new JWTError(
+			"ALGORITHM_NOT_ALLOWED",
+			"Token key-management algorithm does not match the profile's key"
+		);
 	}
 
 	let plaintext: Uint8Array;
@@ -143,7 +164,7 @@ export async function jwtDecrypt(
 		);
 		plaintext = result.plaintext;
 	} catch (cause) {
-		throw new JWTInvalid("Token decryption failed", { cause });
+		throw new JWTError("JWT_INVALID", "Token decryption failed", { cause });
 	}
 
 	const payload = parseJsonObject(decodeUTF8(plaintext), "payload");
@@ -151,7 +172,11 @@ export async function jwtDecrypt(
 
 	if (profile.revocation !== undefined) {
 		if (typeof payload.jti !== "string") {
-			throw new MissingClaim("jti", "This profile has a revocation store but the token carries no jti");
+			throw new JWTError(
+				"MISSING_CLAIM",
+				"This profile has a revocation store but the token carries no jti",
+				{ claim: "jti" }
+			);
 		}
 		let revoked: boolean;
 		try {
@@ -160,10 +185,14 @@ export async function jwtDecrypt(
 			if (profile.unsafeFailOpenOnRevocationError === true) {
 				revoked = false;
 			} else {
-				throw new RevocationCheckFailed("Revocation store errored - failing closed (LW-rev.4)", { cause });
+				throw new JWTError(
+					"REVOCATION_CHECK_FAILED",
+					"Revocation store errored - failing closed (LW-rev.4)",
+					{ cause }
+				);
 			}
 		}
-		if (revoked) throw new JWTRevoked("Token has been revoked");
+		if (revoked) throw new JWTError("JWT_REVOKED", "Token has been revoked");
 	}
 
 	return { header, payload: payload as JwtPayLoad } as DecryptedJwt;

@@ -72,26 +72,8 @@ export { type HeaderSource } from "./src/http/source.js";
 // Debugging escape hatch - branded untrusted, incompatible with VerifiedJwt
 export { unsafeDecode } from "./src/util/unsafe-decode.js";
 
-// Typed errors
-export {
-	JWTError,
-	JWTInvalid,
-	JWTExpired,
-	JWTClaimValidationFailed,
-	MissingClaim,
-	AlgorithmNotAllowed,
-	KeyImportFailed,
-	KeyExportFailed,
-	KeyTypeMismatch,
-	EntropyCheckFailed,
-	JWKSFetchFailed,
-	JWKSNoMatchingKey,
-	JWTRevoked,
-	RevocationCheckFailed,
-	PayloadHygieneViolation,
-	MaxLifetimeExceeded,
-	BearerParseFailed,
-} from "./src/util/errors.js";
+// The one error class; `code` says why Lacewing refused
+export { JWTError, type JWTErrorCode, type JWTClaimErrorCode } from "./src/util/errors.js";
 
 // Public types
 export {

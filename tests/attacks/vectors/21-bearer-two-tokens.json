@@ -4,7 +4,6 @@
 	"attacks": "parser confusion",
 	"reference": "https://datatracker.ietf.org/doc/html/rfc6750#section-2.1",
 	"relatedRequirements": ["LW-http.2"],
-	"expectedError": "BearerParseFailed",
 	"expectedCode": "BEARER_PARSE_FAILED",
 	"target": "bearer",
 	"recipe": { "kind": "bearer", "header": "Bearer aaaaaaaaaaaa bbbbbbbbbbbb" }

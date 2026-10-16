@@ -9,11 +9,7 @@
  */
 
 import { CompactSign } from "jose";
-import {
-	KeyTypeMismatch,
-	MaxLifetimeExceeded,
-	MissingClaim,
-} from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
 import { encodeUTF8 } from "../lib/utf8.js";
 import { scanPayloadForSensitiveData } from "../lib/payload_hygiene.js";
@@ -168,28 +164,32 @@ export class SignJWT {
 			throw new TypeError("sign() only accepts keys imported through Lacewing");
 		}
 		if (key.keyType === "public") {
-			throw new KeyTypeMismatch("Cannot sign with a public key");
+			throw new JWTError("KEY_TYPE_MISMATCH", "Cannot sign with a public key");
 		}
 		if (this.#iss === undefined && !this.#waiveIssuer) {
-			throw new MissingClaim(
-				"iss",
-				"Tokens must name their issuer - call .issuer() (or, deliberately, .unsafeAllowMissingIssuer())"
+			throw new JWTError(
+				"MISSING_CLAIM",
+				"Tokens must name their issuer - call .issuer() (or, deliberately, .unsafeAllowMissingIssuer())",
+				{ claim: "iss" }
 			);
 		}
 		if (this.#aud === undefined && !this.#waiveAudience) {
-			throw new MissingClaim(
-				"aud",
-				"Tokens must name their audience - call .audience() (or, deliberately, .unsafeAllowMissingAudience())"
+			throw new JWTError(
+				"MISSING_CLAIM",
+				"Tokens must name their audience - call .audience() (or, deliberately, .unsafeAllowMissingAudience())",
+				{ claim: "aud" }
 			);
 		}
 		if (this.#expiresIn === undefined && !this.#waiveExpiration) {
-			throw new MissingClaim(
-				"exp",
-				"Tokens must expire - call .expiresIn() (or, deliberately, .unsafeAllowMissingExpiration())"
+			throw new JWTError(
+				"MISSING_CLAIM",
+				"Tokens must expire - call .expiresIn() (or, deliberately, .unsafeAllowMissingExpiration())",
+				{ claim: "exp" }
 			);
 		}
 		if (this.#expiresIn !== undefined && this.#expiresIn > this.#maxLifetime) {
-			throw new MaxLifetimeExceeded(
+			throw new JWTError(
+				"MAX_LIFETIME_EXCEEDED",
 				`Requested lifetime exceeds the ${this.#maxLifetime}s cap - ` +
 					"long-lived tokens need an explicit maxLifetime option"
 			);

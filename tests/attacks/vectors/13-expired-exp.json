@@ -4,7 +4,6 @@
 	"attacks": "replay",
 	"reference": "https://datatracker.ietf.org/doc/html/rfc8725#section-3.9",
 	"relatedRequirements": ["8725-3.9.1"],
-	"expectedError": "JWTExpired",
 	"expectedCode": "JWT_EXPIRED",
 	"profile": "hmac",
 	"recipe": { "kind": "hmac", "header": { "alg": "HS256", "typ": "at+jwt" }, "nowClaims": { "iat": -600, "exp": -300 } }

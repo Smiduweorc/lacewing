@@ -6,16 +6,8 @@ import { defineProfile } from "../../../src/jwt/profile.js";
 import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
 import { importKey } from "../../../src/key/import.js";
 import { MemoryRevocationStore } from "../../../src/revocation/memory.js";
-import {
-	AlgorithmNotAllowed,
-	JWTClaimValidationFailed,
-	JWTInvalid,
-	JWTRevoked,
-	MissingClaim,
-	RevocationCheckFailed,
-} from "../../../src/util/errors.js";
 import type { ProfileOptions, TokenRevocationContext } from "../../../index.js";
-import { craftHmacToken, craftHmacTokenRaw, standardClaims } from "../../helpers.js";
+import { craftHmacToken, craftHmacTokenRaw, standardClaims, refusal } from "../../helpers.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 const secret = generateSecret("HS256");
@@ -65,12 +57,12 @@ test("[8725-3.3.1] tampered tokens are rejected with a typed error", async () =>
 	// Flip a character in each segment in turn.
 	const flip = (s: string): string =>
 		(s[0] === "A" ? "B" : "A") + s.slice(1);
-	await assert.rejects(jwtVerify(`${header}.${flip(payload)}.${signature}`, makeProfile()), JWTInvalid);
-	await assert.rejects(jwtVerify(`${header}.${payload}.${flip(signature)}`, makeProfile()), JWTInvalid);
-	await assert.rejects(jwtVerify(`${header}.${payload}.${signature.slice(0, -8)}`, makeProfile()), JWTInvalid);
+	await assert.rejects(jwtVerify(`${header}.${flip(payload)}.${signature}`, makeProfile()), refusal("JWT_INVALID"));
+	await assert.rejects(jwtVerify(`${header}.${payload}.${flip(signature)}`, makeProfile()), refusal("JWT_INVALID"));
+	await assert.rejects(jwtVerify(`${header}.${payload}.${signature.slice(0, -8)}`, makeProfile()), refusal("JWT_INVALID"));
 });
 
-test("garbage input never crashes - always a typed JWTInvalid", async () => {
+test("garbage input never crashes - always a JWT_INVALID refusal", async () => {
 	const garbage = [
 		"",
 		".",
@@ -83,9 +75,9 @@ test("garbage input never crashes - always a typed JWTInvalid", async () => {
 		`${"a".repeat(20000)}.b.c`,
 	];
 	for (const input of garbage) {
-		await assert.rejects(jwtVerify(input, makeProfile()), JWTInvalid);
+		await assert.rejects(jwtVerify(input, makeProfile()), refusal("JWT_INVALID"));
 	}
-	await assert.rejects(jwtVerify(null as never, makeProfile()), JWTInvalid);
+	await assert.rejects(jwtVerify(null as never, makeProfile()), refusal("JWT_INVALID"));
 });
 
 test("[8725-3.1.1] the profile allowlist decides, not the token header", async () => {
@@ -95,7 +87,7 @@ test("[8725-3.1.1] the profile allowlist decides, not the token header", async (
 		standardClaims(),
 		secret.key as Uint8Array
 	);
-	await assert.rejects(jwtVerify(token, makeProfile()), AlgorithmNotAllowed);
+	await assert.rejects(jwtVerify(token, makeProfile()), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
 test("[8725-3.12.1] profiles with different typ are mutually exclusive", async () => {
@@ -105,8 +97,8 @@ test("[8725-3.12.1] profiles with different typ are mutually exclusive", async (
 	const refreshToken = await signToken("rt+jwt");
 	await assert.doesNotReject(jwtVerify(accessToken, accessProfile));
 	await assert.doesNotReject(jwtVerify(refreshToken, refreshProfile));
-	await assert.rejects(jwtVerify(refreshToken, accessProfile), JWTClaimValidationFailed);
-	await assert.rejects(jwtVerify(accessToken, refreshProfile), JWTClaimValidationFailed);
+	await assert.rejects(jwtVerify(refreshToken, accessProfile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
+	await assert.rejects(jwtVerify(accessToken, refreshProfile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 });
 
 test("[8725-3.11.2] typ comparison tolerates the application/ media-type prefix", async () => {
@@ -120,7 +112,7 @@ test("[LW-rev.2] revoked tokens are rejected after signature and claims pass", a
 	const token = await signToken();
 	const verified = await jwtVerify(token, profile);
 	store.revoke(verified.payload.jti as string, verified.payload.exp);
-	await assert.rejects(jwtVerify(token, profile), JWTRevoked);
+	await assert.rejects(jwtVerify(token, profile), refusal("JWT_REVOKED"));
 	// Other tokens are unaffected.
 	await assert.doesNotReject(jwtVerify(await signToken(), profile));
 });
@@ -136,7 +128,7 @@ test("[LW-rev.3] the store is never consulted for forged tokens", async () => {
 	const profile = makeProfile({ revocation: spyStore });
 	const token = await signToken();
 	const [h, p, s] = token.split(".") as [string, string, string];
-	await assert.rejects(jwtVerify(`${h}.${p}.${s.slice(0, -8)}AAAAAAAA`, profile), JWTInvalid);
+	await assert.rejects(jwtVerify(`${h}.${p}.${s.slice(0, -8)}AAAAAAAA`, profile), refusal("JWT_INVALID"));
 	assert.equal(calls.length, 0, "revocation store must not see unauthenticated input");
 	await jwtVerify(token, profile);
 	assert.equal(calls.length, 1);
@@ -151,7 +143,7 @@ test("[LW-rev.4] store errors fail closed, unless the ugly flag is set", async (
 	const token = await signToken();
 	await assert.rejects(
 		jwtVerify(token, makeProfile({ revocation: failingStore })),
-		RevocationCheckFailed
+		refusal("REVOCATION_CHECK_FAILED")
 	);
 	await assert.doesNotReject(
 		jwtVerify(
@@ -177,7 +169,7 @@ test("[LW-rev] a revocation profile requires tokens to carry a jti", async () =>
 		})(),
 		secret.key as Uint8Array
 	);
-	await assert.rejects(jwtVerify(token, hsProfile), MissingClaim);
+	await assert.rejects(jwtVerify(token, hsProfile), refusal("MISSING_CLAIM"));
 });
 
 test("custom claim validators run through the verify path", async () => {
@@ -195,7 +187,7 @@ test("custom claim validators run through the verify path", async () => {
 		.expiresIn("5m")
 		.sign(privateKey);
 	await assert.doesNotReject(jwtVerify(good, profile));
-	await assert.rejects(jwtVerify(await signToken(), profile), JWTClaimValidationFailed);
+	await assert.rejects(jwtVerify(await signToken(), profile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 });
 
 // Raw bytes so the tokens below can be signed by hand with exact JSON text.
@@ -206,9 +198,9 @@ test("a correctly signed payload carrying an own __proto__ member is rejected", 
 	const payload = JSON.stringify(standardClaims()).replace(/}$/, ",\"__proto__\":{\"isAdmin\":true}}");
 	const token = craftHmacTokenRaw(JSON.stringify({ alg: "HS256", typ: "at+jwt" }), payload, rawSecret);
 	await assert.rejects(jwtVerify(token, makeProfile({ algorithms: ["HS256"], keys: rawSecretKey })), {
-		name: "JWTInvalid",
+		name: "JWTError",
 		code: "JWT_INVALID",
-		message: "Token payload contains the member name \"__proto__\", which can pollute object prototypes",
+		message: "lacewing: Token payload contains the member name \"__proto__\", which can pollute object prototypes",
 	});
 	assert.equal(({} as Record<string, unknown>).isAdmin, undefined);
 });

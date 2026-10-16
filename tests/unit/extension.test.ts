@@ -6,8 +6,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../src/util/errors.js";
+import { refusal } from "../helpers.js";
 import * as extension from "../../src/extension.js";
-import { AlgorithmNotAllowed, JWTInvalid } from "../../src/util/errors.js";
 
 const { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } = extension;
 
@@ -35,13 +36,13 @@ test("[LW-ext.1] a registry lookup is frozen and cannot weaken later imports", (
 	assert.equal(getAlgorithmProperties("PS256").minKeyBits, 2048);
 });
 
-test("a registry lookup of an absent algorithm throws AlgorithmNotAllowed without echoing it", () => {
+test("a registry lookup of an absent algorithm is refused as ALGORITHM_NOT_ALLOWED without echoing it", () => {
 	for (const alg of ["none", "RS256", "HS1", "", "ed25519", "EVIL<script>"]) {
 		try {
 			getAlgorithmProperties(alg);
 			assert.fail(`${alg} should have been refused`);
 		} catch (error) {
-			assert.ok(error instanceof AlgorithmNotAllowed, alg);
+			assert.ok(error instanceof JWTError && error.code === "ALGORITHM_NOT_ALLOWED", alg);
 			assert.equal(error.code, "ALGORITHM_NOT_ALLOWED");
 			if (alg.length > 0) assert.ok(!error.message.includes(alg), alg);
 		}
@@ -135,7 +136,7 @@ test("parseJsonObject refuses a member name that appears twice, at any depth and
 		assert.throws(
 			() => parseJsonObject(text, "header"),
 			(error: unknown) =>
-				error instanceof JWTInvalid && /duplicate JSON key/.test(error.message),
+				error instanceof JWTError && error.code === "JWT_INVALID" && /duplicate JSON key/.test(error.message),
 			text
 		);
 	}
@@ -151,9 +152,9 @@ test("parseJsonObject allows the same name in sibling objects and as a value", (
 
 test("parseJsonObject refuses JSON that is not an object, and text that is not JSON", () => {
 	for (const text of ["[]", "[{}]", "null", "1", "\"str\"", "true"]) {
-		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+		assert.throws(() => parseJsonObject(text, "header"), refusal("JWT_INVALID"), text);
 	}
 	for (const text of ["", "{", "{'a':1}", "{\"a\":1,}", "\uFEFF{}"]) {
-		assert.throws(() => parseJsonObject(text, "header"), JWTInvalid, text);
+		assert.throws(() => parseJsonObject(text, "header"), refusal("JWT_INVALID"), text);
 	}
 });

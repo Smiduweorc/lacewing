@@ -5,13 +5,13 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../../helpers.js";
 import { generateKeyPair as joseGenerateKeyPair, SignJWT as JoseSignJWT } from "jose";
 import { enableLegacyRS256 } from "../../../src/legacy/rs256.js";
 import { isValidAlgorithm } from "../../../src/lib/algorithms.js";
 import { importKey } from "../../../src/key/import.js";
 import { defineProfile } from "../../../src/jwt/profile.js";
 import { jwtVerify } from "../../../src/jwt/verify.js";
-import { AlgorithmNotAllowed } from "../../../src/util/errors.js";
 
 test("[8725-3.2.3] RS256 requires the explicit legacy opt-in, then interops", async () => {
 	assert.equal(isValidAlgorithm("RS256"), false);
@@ -25,7 +25,7 @@ test("[8725-3.2.3] RS256 requires the explicit legacy opt-in, then interops", as
 				keys: { keys: [] },
 				maxTokenAge: "15m",
 			}),
-		AlgorithmNotAllowed
+		refusal("ALGORITHM_NOT_ALLOWED")
 	);
 
 	// The grep-loud opt-in:

@@ -3,7 +3,7 @@
  * the token - no replacement characters, no silently stripped BOM.
  */
 
-import { JWTInvalid } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 
 const encoder = new TextEncoder();
 // fatal: rejects malformed/overlong sequences. ignoreBOM: a leading BOM is
@@ -17,7 +17,7 @@ const LONE_SURROGATE =
 
 export function encodeUTF8(text: string): Uint8Array {
 	if (LONE_SURROGATE.test(text)) {
-		throw new JWTInvalid("Text contains unpaired surrogates");
+		throw new JWTError("JWT_INVALID", "Text contains unpaired surrogates");
 	}
 	return encoder.encode(text);
 }
@@ -26,6 +26,6 @@ export function decodeUTF8(bytes: Uint8Array): string {
 	try {
 		return decoder.decode(bytes);
 	} catch (cause) {
-		throw new JWTInvalid("Malformed UTF-8", { cause });
+		throw new JWTError("JWT_INVALID", "Malformed UTF-8", { cause });
 	}
 }

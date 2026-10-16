@@ -7,6 +7,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import fc from "fast-check";
 import {
 	accessTokenProfile,
@@ -15,7 +16,6 @@ import {
 	newRefreshToken,
 	jwtVerify,
 	generateKeyPair,
-	JWTClaimValidationFailed,
 	type LacewingKey,
 	type SignJWT,
 } from "../../index.js";
@@ -48,7 +48,7 @@ test("[LW-kind.1] no access token is ever accepted by the refresh profile", asyn
 			const { header } = await jwtVerify(token, access);
 			assert.equal(header.typ, "at+jwt");
 			// ...and the other kind's profile does not, on typ alone.
-			await assert.rejects(jwtVerify(token, refresh), JWTClaimValidationFailed);
+			await assert.rejects(jwtVerify(token, refresh), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 		}),
 		{ numRuns: 25 }
 	);
@@ -60,7 +60,7 @@ test("[LW-kind.1] no refresh token is ever accepted by the access profile", asyn
 			const token = await sign(newRefreshToken(), sub, sc, privateKey);
 			const { header } = await jwtVerify(token, refresh);
 			assert.equal(header.typ, "rt+jwt");
-			await assert.rejects(jwtVerify(token, access), JWTClaimValidationFailed);
+			await assert.rejects(jwtVerify(token, access), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 		}),
 		{ numRuns: 25 }
 	);

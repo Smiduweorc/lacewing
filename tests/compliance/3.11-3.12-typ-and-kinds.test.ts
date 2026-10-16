@@ -7,7 +7,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SignJWT, jwtVerify, unsafeDecode, JWTClaimValidationFailed } from "../../index.js";
+import { refusal } from "../helpers.js";
+import { SignJWT, jwtVerify, unsafeDecode } from "../../index.js";
 import { AUDIENCE, ISSUER, hmac, hmacProfile } from "./_shared.js";
 
 test("[8725-3.11.1] sign cannot produce a token without an explicit typ", () => {
@@ -33,7 +34,7 @@ test("[8725-3.11.2] the verifier rejects a token whose typ is not the profile's"
 		.expiresIn("5m")
 		.sign(hmac);
 	// hmacProfile() expects "at+jwt".
-	await assert.rejects(jwtVerify(refresh, hmacProfile()), JWTClaimValidationFailed);
+	await assert.rejects(jwtVerify(refresh, hmacProfile()), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 });
 
 test("[8725-3.12.1] access and refresh profiles are mutually exclusive by typ", async () => {
@@ -47,6 +48,6 @@ test("[8725-3.12.1] access and refresh profiles are mutually exclusive by typ", 
 	assert.equal((await jwtVerify(access, accessProfile)).header.typ, "at+jwt");
 	assert.equal((await jwtVerify(refresh, refreshProfile)).header.typ, "rt+jwt");
 	// ...and refuses the other's, even though the key and claims are identical.
-	await assert.rejects(jwtVerify(refresh, accessProfile), JWTClaimValidationFailed);
-	await assert.rejects(jwtVerify(access, refreshProfile), JWTClaimValidationFailed);
+	await assert.rejects(jwtVerify(refresh, accessProfile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
+	await assert.rejects(jwtVerify(access, refreshProfile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 });

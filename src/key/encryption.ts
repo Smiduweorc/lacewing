@@ -7,7 +7,7 @@
  */
 
 import { generateKeyPair as joseGenerateKeyPair, importJWK, importPKCS8, importSPKI } from "jose";
-import { KeyImportFailed, KeyTypeMismatch } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import {
 	getContentEncryptionProperties,
 	getKeyManagementProperties,
@@ -30,7 +30,8 @@ export interface GenerateEncryptionKeyPairOptions {
 
 function assertSymmetric(info: JweKeyManagementInfo, algorithm: string): void {
 	if (info.kind !== "aeskw") {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			`${algorithm} is not an AES key-wrapping algorithm - use ` +
 				(info.kind === "dir" ? "generateDirectKey(enc)" : "generateEncryptionKeyPair()")
 		);
@@ -48,7 +49,10 @@ export async function generateEncryptionKeyPair<const Alg extends string>(
 ): Promise<{ publicKey: LacewingEncryptionKey<Alg>; privateKey: LacewingEncryptionKey<Alg> }> {
 	const info = getKeyManagementProperties(algorithm);
 	if (info.kind !== "ecdh" && info.kind !== "rsa") {
-		throw new KeyTypeMismatch(`${algorithm} is symmetric - use generateEncryptionSecret()/generateDirectKey()`);
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
+			`${algorithm} is symmetric - use generateEncryptionSecret()/generateDirectKey()`
+		);
 	}
 	const alg = SetAlg(algorithm) as Alg & ReturnType<typeof SetAlg>;
 	try {
@@ -60,7 +64,7 @@ export async function generateEncryptionKeyPair<const Alg extends string>(
 			privateKey: createLacewingEncryptionKey(alg, "private", privateKey),
 		};
 	} catch (cause) {
-		throw new KeyImportFailed("Encryption key generation failed", { cause });
+		throw new JWTError("KEY_IMPORT_FAILED", "Encryption key generation failed", { cause });
 	}
 }
 
@@ -104,14 +108,23 @@ function importSymmetric(material: EncryptionKeyMaterial, info: JweKeyManagement
 	) {
 		secret = decodeBase64url(material.k);
 	} else {
-		throw new KeyImportFailed(`${algorithm} keys must be a Uint8Array or oct JWK`);
+		throw new JWTError(
+			"KEY_IMPORT_FAILED",
+			`${algorithm} keys must be a Uint8Array or oct JWK`
+		);
 	}
 	// AES key-wrap keys are a fixed size; `dir` keys must match some valid CEK size.
 	if (info.kind === "aeskw" && secret.length !== info.secretBytes) {
-		throw new KeyTypeMismatch(`${algorithm} requires a ${info.secretBytes}-byte key`);
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
+			`${algorithm} requires a ${info.secretBytes}-byte key`
+		);
 	}
 	if (info.kind === "dir" && ![16, 24, 32, 48, 64].includes(secret.length)) {
-		throw new KeyTypeMismatch("A dir key must be 16, 24, 32, 48 or 64 bytes (a valid CEK size)");
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
+			"A dir key must be 16, 24, 32, 48 or 64 bytes (a valid CEK size)"
+		);
 	}
 	return secret;
 }
@@ -122,7 +135,10 @@ async function importAsymmetricEncryption(
 ): Promise<{ key: unknown; keyType: "public" | "private" }> {
 	if (material instanceof CryptoKey) {
 		if (material.type !== "public" && material.type !== "private") {
-			throw new KeyTypeMismatch(`A secret key cannot be used with ${algorithm}`);
+			throw new JWTError(
+				"KEY_TYPE_MISMATCH",
+				`A secret key cannot be used with ${algorithm}`
+			);
 		}
 		return { key: material, keyType: material.type };
 	}
@@ -133,20 +149,23 @@ async function importAsymmetricEncryption(
 		if (material.includes("-----BEGIN PUBLIC KEY-----")) {
 			return { key: await importSPKI(material, algorithm), keyType: "public" };
 		}
-		throw new KeyImportFailed("Unsupported PEM - only PKCS#8 private and SPKI public keys are accepted");
+		throw new JWTError(
+			"KEY_IMPORT_FAILED",
+			"Unsupported PEM - only PKCS#8 private and SPKI public keys are accepted"
+		);
 	}
 	if (typeof material === "object" && material !== null) {
 		const jwk = material as StaticJWK;
 		const keyType = typeof jwk.d === "string" ? "private" : "public";
 		return { key: await importJWK(jwk as Parameters<typeof importJWK>[0], algorithm), keyType };
 	}
-	throw new KeyImportFailed("Unsupported encryption key material");
+	throw new JWTError("KEY_IMPORT_FAILED", "Unsupported encryption key material");
 }
 
 /**
  * Import encryption key material and bind it to `algorithm`. Throws
- * {@link KeyTypeMismatch} when material and algorithm disagree, and
- * {@link KeyImportFailed} for anything else.
+ * `KEY_TYPE_MISMATCH` when material and algorithm disagree, and
+ * `KEY_IMPORT_FAILED` for anything else.
  */
 export async function importEncryptionKey<const Alg extends string>(
 	material: EncryptionKeyMaterial,
@@ -161,7 +180,7 @@ export async function importEncryptionKey<const Alg extends string>(
 		const { key, keyType } = await importAsymmetricEncryption(material, algorithm);
 		return createLacewingEncryptionKey(alg, keyType, key);
 	} catch (cause) {
-		if (cause instanceof KeyTypeMismatch || cause instanceof KeyImportFailed) throw cause;
-		throw new KeyImportFailed("Encryption key import failed", { cause });
+		if (cause instanceof JWTError && (cause.code === "KEY_TYPE_MISMATCH" || cause.code === "KEY_IMPORT_FAILED")) throw cause;
+		throw new JWTError("KEY_IMPORT_FAILED", "Encryption key import failed", { cause });
 	}
 }

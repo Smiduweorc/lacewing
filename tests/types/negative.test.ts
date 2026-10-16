@@ -48,6 +48,11 @@ const FIXTURES: Array<{ file: string; code: string; why: string }> = [
 		code: "TS2345",
 		why: "a bare CryptoKey must not be signable - keys come through importKey",
 	},
+	{
+		file: "claim-code-needs-claim.ts",
+		code: "TS2345",
+		why: "a claim refusal must name its claim",
+	},
 ];
 
 const tsc = spawnSync(

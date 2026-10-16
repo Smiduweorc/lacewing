@@ -2,6 +2,8 @@
 
 import { Buffer } from "node:buffer";
 import { createHmac } from "node:crypto";
+import assert from "node:assert/strict";
+import { JWTError, type JWTErrorCode } from "../src/util/errors.js";
 
 export function nowSeconds(): number {
 	return Math.floor(Date.now() / 1000);
@@ -78,11 +80,17 @@ export function standardClaims(
 	};
 }
 
-/** Expect an error that is an instance of `type` with the given `code`. */
-export function errorWithCode(
-	type: abstract new (...args: never[]) => Error,
-	code: string
-): (error: unknown) => boolean {
-	return (error: unknown): boolean =>
-		error instanceof type && (error as { code?: string }).code === code;
+/**
+ * An `assert.throws` / `assert.rejects` validator for one of Lacewing's own
+ * refusals: a {@link JWTError} carrying `code`, with the package prefix on
+ * its message. It asserts rather than returning false, so a failure names the
+ * error that arrived instead.
+ */
+export function refusal(code: JWTErrorCode): (error: unknown) => true {
+	return (error: unknown): true => {
+		assert.ok(error instanceof JWTError, `expected a JWTError, got ${String(error)}`);
+		assert.equal(error.code, code, error.message);
+		assert.match(error.message, /^lacewing: /);
+		return true;
+	};
 }

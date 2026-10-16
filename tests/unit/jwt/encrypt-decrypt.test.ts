@@ -5,6 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../../helpers.js";
 import { Buffer } from "node:buffer";
 import {
 	EncryptJWT,
@@ -16,9 +17,6 @@ import {
 	importEncryptionKey,
 	generateSecret,
 	MemoryRevocationStore,
-	JWTRevoked,
-	JWTInvalid,
-	KeyTypeMismatch,
 	type ExpectedDecryptionProfile,
 	type LacewingEncryptionKey,
 } from "../../../index.js";
@@ -58,7 +56,7 @@ test("round-trips through the asymmetric, AES-KW and dir families", async () => 
 });
 
 test("encrypt() refuses a private key and a raw CryptoKey", async () => {
-	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("5m").encrypt(ecdh.privateKey), KeyTypeMismatch);
+	await assert.rejects(new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("5m").encrypt(ecdh.privateKey), refusal("KEY_TYPE_MISMATCH"));
 	// A bare object is not a LacewingEncryptionKey.
 	await assert.rejects(
 		new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("5m").encrypt({} as unknown as LacewingEncryptionKey),
@@ -81,19 +79,19 @@ test("a tampered ciphertext fails to decrypt", async () => {
 	const ct = Buffer.from(parts[3] as string, "base64url");
 	ct[0] = (ct[0] as number) ^ 0xff;
 	parts[3] = ct.toString("base64url");
-	await assert.rejects(jwtDecrypt(parts.join("."), profile(dir, ["dir"], ["A256GCM"])), JWTInvalid);
+	await assert.rejects(jwtDecrypt(parts.join("."), profile(dir, ["dir"], ["A256GCM"])), refusal("JWT_INVALID"));
 });
 
 test("a zip header is rejected before decryption (decompression bomb)", async () => {
 	const header = Buffer.from(JSON.stringify({ alg: "dir", enc: "A256GCM", typ: "at+jwt", zip: "DEF" })).toString("base64url");
 	const bogus = `${header}..aaaa.bbbb.cccc`;
-	await assert.rejects(jwtDecrypt(bogus, profile(dir, ["dir"], ["A256GCM"])), JWTInvalid);
+	await assert.rejects(jwtDecrypt(bogus, profile(dir, ["dir"], ["A256GCM"])), refusal("JWT_INVALID"));
 });
 
 test("wrong number of segments is rejected (JWS shape, garbage)", async () => {
-	await assert.rejects(jwtDecrypt("a.b.c", profile(dir, ["dir"], ["A256GCM"])), JWTInvalid);
-	await assert.rejects(jwtDecrypt("a.b.c.d.e.f", profile(dir, ["dir"], ["A256GCM"])), JWTInvalid);
-	await assert.rejects(jwtDecrypt("", profile(dir, ["dir"], ["A256GCM"])), JWTInvalid);
+	await assert.rejects(jwtDecrypt("a.b.c", profile(dir, ["dir"], ["A256GCM"])), refusal("JWT_INVALID"));
+	await assert.rejects(jwtDecrypt("a.b.c.d.e.f", profile(dir, ["dir"], ["A256GCM"])), refusal("JWT_INVALID"));
+	await assert.rejects(jwtDecrypt("", profile(dir, ["dir"], ["A256GCM"])), refusal("JWT_INVALID"));
 });
 
 test("revocation applies to encrypted tokens too, after decryption", async () => {
@@ -102,12 +100,12 @@ test("revocation applies to encrypted tokens too, after decryption", async () =>
 	const token = await new EncryptJWT("at+jwt").issuer(ISS).audience(AUD).expiresIn("5m").encrypt(dir);
 	const { payload } = await jwtDecrypt(token, p);
 	revocation.revoke(payload.jti as string, payload.exp);
-	await assert.rejects(jwtDecrypt(token, p), JWTRevoked);
+	await assert.rejects(jwtDecrypt(token, p), refusal("JWT_REVOKED"));
 });
 
 test("importEncryptionKey binds symmetric keys to a size", async () => {
 	// A256KW needs 32 bytes; 16 is refused.
-	await assert.rejects(importEncryptionKey(new Uint8Array(16), "A256KW"), KeyTypeMismatch);
+	await assert.rejects(importEncryptionKey(new Uint8Array(16), "A256KW"), refusal("KEY_TYPE_MISMATCH"));
 	const ok = await importEncryptionKey(new Uint8Array(32), "A256KW");
 	assert.equal(ok.algorithm, "A256KW");
 });
@@ -116,7 +114,7 @@ test("a dir key sized for one enc cannot encrypt under another", async () => {
 	const dir32 = generateDirectKey("A256GCM"); // 32 bytes
 	await assert.rejects(
 		new EncryptJWT("at+jwt", { contentEncryption: "A128GCM" }).issuer(ISS).audience(AUD).expiresIn("5m").encrypt(dir32),
-		KeyTypeMismatch
+		refusal("KEY_TYPE_MISMATCH")
 	);
 });
 
@@ -147,7 +145,7 @@ test("[strictness] non-canonical trailing bits are rejected in every JWE segment
 		assert.notEqual(variant, segment);
 
 		const mutated = segments.map((s, n) => (n === i ? variant : s)).join(".");
-		await assert.rejects(jwtDecrypt(mutated, p), JWTInvalid, `segment ${i} accepted a non-canonical twin`);
+		await assert.rejects(jwtDecrypt(mutated, p), refusal("JWT_INVALID"), `segment ${i} accepted a non-canonical twin`);
 		exercised++;
 	}
 	// The header, the A256KW encrypted key and the tag always have slack.
@@ -159,8 +157,8 @@ test("a decrypted payload carrying an own __proto__ member is rejected", async (
 		.issuer(ISS).audience(AUD).subject("user-42").claim("__proto__", { isAdmin: true }).expiresIn("5m")
 		.encrypt(dir);
 	await assert.rejects(jwtDecrypt(token, profile(dir, ["dir"], ["A256GCM"])), {
-		name: "JWTInvalid",
+		name: "JWTError",
 		code: "JWT_INVALID",
-		message: "Token payload contains the member name \"__proto__\", which can pollute object prototypes",
+		message: "lacewing: Token payload contains the member name \"__proto__\", which can pollute object prototypes",
 	});
 });

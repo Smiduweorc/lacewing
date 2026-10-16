@@ -7,8 +7,7 @@ import { SignJWT } from "../../../src/jwt/sign.js";
 import { generateKeyPair } from "../../../src/key/generate.js";
 import { exportKeyJWK } from "../../../src/key/export.js";
 import { toValidAlg } from "../../../src/lib/algorithms.js";
-import { EntropyCheckFailed, JWKSNoMatchingKey } from "../../../src/util/errors.js";
-import { b64u } from "../../helpers.js";
+import { b64u, refusal } from "../../helpers.js";
 import type { JwtHeader, StaticJWK } from "../../../src/types.js";
 
 const alice = await generateKeyPair("EdDSA", { extractable: true });
@@ -32,7 +31,7 @@ test("fails closed on unknown kid", async () => {
 	const source = createLocalJWKSet({ keys: [aliceJwk, bobJwk] });
 	await assert.rejects(
 		source.getVerificationKey(header("carol"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 });
 
@@ -40,7 +39,7 @@ test("ambiguity without a kid fails closed rather than guessing", async () => {
 	const source = createLocalJWKSet({ keys: [aliceJwk, bobJwk] });
 	await assert.rejects(
 		source.getVerificationKey(header(undefined), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 	// A single unambiguous key works without a kid.
 	const single = createLocalJWKSet({ keys: [aliceJwk] });
@@ -56,11 +55,11 @@ test("[8725-3.2.1] entries outside the registry or marked for encryption are nev
 	});
 	await assert.rejects(
 		source.getVerificationKey(header("alice"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 	await assert.rejects(
 		source.getVerificationKey(header("bob"), [toValidAlg("EdDSA")]),
-		JWKSNoMatchingKey
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 });
 
@@ -70,7 +69,7 @@ test("[8725-3.5.2] weak oct keys inside a JWKS are rejected at resolution", asyn
 	});
 	await assert.rejects(
 		source.getVerificationKey(header("weak", "HS256"), [toValidAlg("HS256")]),
-		EntropyCheckFailed
+		refusal("ENTROPY_CHECK_FAILED")
 	);
 });
 

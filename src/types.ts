@@ -6,6 +6,8 @@
 
 // Claim registry: https://www.iana.org/assignments/jwt/jwt.xhtml
 
+import { JWTError } from "./util/errors.js";
+
 /**
  * A string that has been validated against the algorithm registry.
  * `"none"` is unrepresentable (RFC 8725 §3.2).
@@ -19,7 +21,7 @@ export type ValidAlg = string & { readonly __alg: unique symbol };
  */
 export const SetAlg = (value: string): ValidAlg => {
 	if (value.toLowerCase() === "none") {
-		throw new Error("Algorithm 'none' is not allowed");
+		throw new JWTError("ALGORITHM_NOT_ALLOWED", "Algorithm 'none' is not allowed");
 	}
 	return value as ValidAlg;
 };

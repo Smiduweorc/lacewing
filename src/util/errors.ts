@@ -1,117 +1,84 @@
 /**
- * Typed error hierarchy.
+ * Lacewing's one error class.
  *
- * Every error carries a machine-readable `code` so operators can branch on
- * failure modes, while messages stay generic: security-relevant rejections
- * never echo untrusted token content (no oracle for attackers, no log
- * injection - RFC 8725 §3.10 hygiene).
+ * Every refusal Lacewing makes is a {@link JWTError} whose `code` names the
+ * failure mode, so callers branch on `error.code` and never on message text.
+ * Messages stay generic: security-relevant rejections never echo untrusted
+ * token content (no oracle for attackers, no log injection, RFC 8725 §3.10
+ * hygiene).
+ *
+ * Errors thrown by code the caller supplied (a `fetch` for a remote JWKS, for
+ * one) are not Lacewing's refusals and come back unchanged.
  */
 
-export abstract class JWTError extends Error {
-	abstract readonly code: string;
+/**
+ * Why Lacewing refused.
+ *
+ * | Code | Meaning |
+ * | --- | --- |
+ * | `JWT_INVALID` | Token structure, encoding or signature is invalid. |
+ * | `JWT_EXPIRED` | Token is past `exp`, or older than the profile's `maxTokenAge`. |
+ * | `JWT_CLAIM_VALIDATION_FAILED` | A claim is present but fails the profile's rules. Sets `claim`. |
+ * | `MISSING_CLAIM` | A claim the profile or Lacewing requires is absent. Sets `claim`. |
+ * | `ALGORITHM_NOT_ALLOWED` | The algorithm is not one Lacewing speaks, or not in the allowlist. |
+ * | `KEY_IMPORT_FAILED` | Key material could not be imported or generated. |
+ * | `KEY_TYPE_MISMATCH` | Key does not fit the algorithm it is used with. |
+ * | `KEY_EXPORT_FAILED` | Key material could not be exported. |
+ * | `ENTROPY_CHECK_FAILED` | HMAC secret is too short or looks human-chosen (§3.5). |
+ * | `JWKS_FETCH_FAILED` | Remote JWKS could not be fetched or parsed. |
+ * | `JWKS_NO_MATCHING_KEY` | No single key in the JWKS matches the token. |
+ * | `JWT_REVOKED` | Token is valid but its `jti` is revoked. |
+ * | `REVOCATION_CHECK_FAILED` | The revocation store errored and Lacewing failed closed. |
+ * | `PAYLOAD_HYGIENE_VIOLATION` | A payload about to be signed carries sensitive data. Sets `claim`. |
+ * | `MAX_LIFETIME_EXCEEDED` | Requested token lifetime exceeds the cap. |
+ * | `BEARER_PARSE_FAILED` | `Authorization` header failed strict RFC 6750 parsing. |
+ */
+export type JWTErrorCode =
+	| "JWT_INVALID"
+	| "JWT_EXPIRED"
+	| "JWT_CLAIM_VALIDATION_FAILED"
+	| "MISSING_CLAIM"
+	| "ALGORITHM_NOT_ALLOWED"
+	| "KEY_IMPORT_FAILED"
+	| "KEY_TYPE_MISMATCH"
+	| "KEY_EXPORT_FAILED"
+	| "ENTROPY_CHECK_FAILED"
+	| "JWKS_FETCH_FAILED"
+	| "JWKS_NO_MATCHING_KEY"
+	| "JWT_REVOKED"
+	| "REVOCATION_CHECK_FAILED"
+	| "PAYLOAD_HYGIENE_VIOLATION"
+	| "MAX_LIFETIME_EXCEEDED"
+	| "BEARER_PARSE_FAILED";
 
-	constructor(message: string, options?: { cause?: unknown }) {
-		super(message, options);
-		this.name = new.target.name;
+/** The codes that are about one claim, and so always name it. */
+export type JWTClaimErrorCode =
+	| "JWT_CLAIM_VALIDATION_FAILED"
+	| "MISSING_CLAIM"
+	| "PAYLOAD_HYGIENE_VIOLATION";
+
+export class JWTError extends Error {
+	readonly code: JWTErrorCode;
+	/** Name of the claim involved (never its value). Set for the claim codes only. */
+	declare readonly claim?: string;
+
+	constructor(
+		code: JWTClaimErrorCode,
+		message: string,
+		options: { claim: string; cause?: unknown }
+	);
+	constructor(
+		code: Exclude<JWTErrorCode, JWTClaimErrorCode>,
+		message: string,
+		options?: { cause?: unknown }
+	);
+	constructor(code: JWTErrorCode, message: string, options?: { claim?: string; cause?: unknown }) {
+		super(
+			`lacewing: ${message}`,
+			options !== undefined && "cause" in options ? { cause: options.cause } : undefined
+		);
+		this.name = "JWTError";
+		this.code = code;
+		if (options?.claim !== undefined) this.claim = options.claim;
 	}
-}
-
-/** Token structure or signature is invalid. */
-export class JWTInvalid extends JWTError {
-	readonly code = "JWT_INVALID";
-}
-
-/** Token is past `exp`, or older than the profile's `maxTokenAge`. */
-export class JWTExpired extends JWTError {
-	readonly code = "JWT_EXPIRED";
-}
-
-/** A claim is present but does not satisfy the profile's rules. */
-export class JWTClaimValidationFailed extends JWTError {
-	readonly code = "JWT_CLAIM_VALIDATION_FAILED";
-	/** Name of the offending claim (never its value). */
-	readonly claim: string;
-
-	constructor(claim: string, message: string, options?: { cause?: unknown }) {
-		super(message, options);
-		this.claim = claim;
-	}
-}
-
-/** A claim required by the profile or by Lacewing policy is absent. */
-export class MissingClaim extends JWTError {
-	readonly code = "MISSING_CLAIM";
-	readonly claim: string;
-
-	constructor(claim: string, message?: string) {
-		super(message ?? `Required claim "${claim}" is missing`);
-		this.claim = claim;
-	}
-}
-
-/** Algorithm is not in the registry / profile allowlist. */
-export class AlgorithmNotAllowed extends JWTError {
-	readonly code = "ALGORITHM_NOT_ALLOWED";
-}
-
-/** Key material could not be imported. */
-export class KeyImportFailed extends JWTError {
-	readonly code = "KEY_IMPORT_FAILED";
-}
-
-/** Key does not match the algorithm it is being used with. */
-export class KeyTypeMismatch extends JWTError {
-	readonly code = "KEY_TYPE_MISMATCH";
-}
-
-/** Key material could not be exported. */
-export class KeyExportFailed extends JWTError {
-	readonly code = "KEY_EXPORT_FAILED";
-}
-
-/** HMAC secret failed the strength checks (RFC 8725 §3.5). */
-export class EntropyCheckFailed extends JWTError {
-	readonly code = "ENTROPY_CHECK_FAILED";
-}
-
-/** Remote JWKS could not be fetched or parsed. */
-export class JWKSFetchFailed extends JWTError {
-	readonly code = "JWKS_FETCH_FAILED";
-}
-
-/** No key in the JWKS matches the token's header. */
-export class JWKSNoMatchingKey extends JWTError {
-	readonly code = "JWKS_NO_MATCHING_KEY";
-}
-
-/** Token is valid but its `jti` has been revoked (LW-rev.2). */
-export class JWTRevoked extends JWTError {
-	readonly code = "JWT_REVOKED";
-}
-
-/** The revocation store errored; Lacewing fails closed (LW-rev.4). */
-export class RevocationCheckFailed extends JWTError {
-	readonly code = "REVOCATION_CHECK_FAILED";
-}
-
-/** Sign-time payload hygiene scanner found sensitive data (LW-payload). */
-export class PayloadHygieneViolation extends JWTError {
-	readonly code = "PAYLOAD_HYGIENE_VIOLATION";
-	/** Name of the offending claim (never its value). */
-	readonly claim: string;
-
-	constructor(claim: string, message: string) {
-		super(message);
-		this.claim = claim;
-	}
-}
-
-/** Requested token lifetime exceeds the configured cap (LW-life.1). */
-export class MaxLifetimeExceeded extends JWTError {
-	readonly code = "MAX_LIFETIME_EXCEEDED";
-}
-
-/** `Authorization` header failed strict RFC 6750 parsing (LW-http.2). */
-export class BearerParseFailed extends JWTError {
-	readonly code = "BEARER_PARSE_FAILED";
 }

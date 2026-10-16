@@ -1,12 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../../src/util/errors.js";
+import { refusal } from "../../helpers.js";
 import {
 	getAlgorithmProperties,
 	isValidAlgorithm,
 	listAlgorithms,
 	toValidAlg,
 } from "../../../src/lib/algorithms.js";
-import { AlgorithmNotAllowed } from "../../../src/util/errors.js";
 import { SetAlg } from "../../../src/types.js";
 
 const EXPECTED = [
@@ -34,15 +35,15 @@ test("[8725-3.2.1] the registry contains exactly the modern allowlist", () => {
 test("[8725-3.2.2] 'none' is not representable in the registry", () => {
 	for (const alg of ["none", "None", "NONE", "nOnE"]) {
 		assert.equal(isValidAlgorithm(alg), false);
-		assert.throws(() => getAlgorithmProperties(alg), AlgorithmNotAllowed);
-		assert.throws(() => SetAlg(alg));
+		assert.throws(() => getAlgorithmProperties(alg), refusal("ALGORITHM_NOT_ALLOWED"));
+		assert.throws(() => SetAlg(alg), refusal("ALGORITHM_NOT_ALLOWED"));
 	}
 });
 
 test("[8725-3.2.3] RS256 and RSA1_5 are absent by default", () => {
 	for (const alg of ["RS256", "RS384", "RS512", "RSA1_5"]) {
 		assert.equal(isValidAlgorithm(alg), false);
-		assert.throws(() => getAlgorithmProperties(alg), AlgorithmNotAllowed);
+		assert.throws(() => getAlgorithmProperties(alg), refusal("ALGORITHM_NOT_ALLOWED"));
 	}
 });
 
@@ -56,15 +57,15 @@ test("rejection messages never echo the attacker-supplied algorithm", () => {
 		getAlgorithmProperties("EVIL<script>");
 		assert.fail("should have thrown");
 	} catch (error) {
-		assert.ok(error instanceof AlgorithmNotAllowed);
+		assert.ok(error instanceof JWTError && error.code === "ALGORITHM_NOT_ALLOWED");
 		assert.ok(!error.message.includes("EVIL"));
 	}
 });
 
 test("toValidAlg brands registry members and rejects the rest", () => {
 	assert.equal(toValidAlg("EdDSA"), "EdDSA");
-	assert.throws(() => toValidAlg("RS256"), AlgorithmNotAllowed);
-	assert.throws(() => toValidAlg("none"), AlgorithmNotAllowed);
+	assert.throws(() => toValidAlg("RS256"), refusal("ALGORITHM_NOT_ALLOWED"));
+	assert.throws(() => toValidAlg("none"), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
 test("algorithm properties bind key types correctly", () => {

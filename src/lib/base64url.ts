@@ -8,7 +8,7 @@
  * shortcut here: it accepts whitespace and padding, both of which must fail.
  */
 
-import { JWTInvalid } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 const B64URL = /^[A-Za-z0-9_-]*$/;
@@ -47,12 +47,12 @@ export function encodeBase64url(bytes: Uint8Array): string {
 
 export function decodeBase64url(encoded: string): Uint8Array {
 	if (typeof encoded !== "string" || !B64URL.test(encoded)) {
-		throw new JWTInvalid("Invalid base64url");
+		throw new JWTError("JWT_INVALID", "Invalid base64url");
 	}
 	// A single leftover character can never encode a full byte.
 	const tail = encoded.length % 4;
 	if (tail === 1) {
-		throw new JWTInvalid("Invalid base64url length");
+		throw new JWTError("JWT_INVALID", "Invalid base64url length");
 	}
 	// Canonical check: the bits of the last character that fall past the final
 	// byte must be zero, or two encodings of the same bytes would both verify
@@ -60,7 +60,7 @@ export function decodeBase64url(encoded: string): Uint8Array {
 	if (tail !== 0) {
 		const unused = tail === 2 ? 0b1111 : 0b11;
 		if ((sextet(encoded, encoded.length - 1) & unused) !== 0) {
-			throw new JWTInvalid("Non-canonical base64url");
+			throw new JWTError("JWT_INVALID", "Non-canonical base64url");
 		}
 	}
 	const bytes = new Uint8Array(Math.floor((encoded.length * 3) / 4));

@@ -18,7 +18,7 @@
  * well-formed, so it can assume valid JSON and stay small.
  */
 
-import { JWTInvalid } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 
 interface ObjectContext {
 	readonly seen: Set<string>;
@@ -84,7 +84,7 @@ function readString(text: string, start: number): { value: string; next: number 
 }
 
 /**
- * Throw {@link JWTInvalid} if `text` (already known to be valid JSON) contains
+ * Throw `JWT_INVALID` if `text` (already known to be valid JSON) contains
  * a duplicated member name, or `__proto__`, `constructor` or `prototype` as a
  * member name, in any object at any depth.
  */
@@ -114,10 +114,16 @@ export function assertNoDuplicateKeys(text: string, what: string): void {
 			if (top !== undefined && top !== "array" && top.expectingKey) {
 				const { value, next } = readString(text, i);
 				if (PROTOTYPE_KEYS.has(value)) {
-					throw new JWTInvalid(`Token ${what} contains the member name "${value}", which can pollute object prototypes`);
+					throw new JWTError(
+						"JWT_INVALID",
+						`Token ${what} contains the member name "${value}", which can pollute object prototypes`
+					);
 				}
 				if (top.seen.has(value)) {
-					throw new JWTInvalid(`Token ${what} contains a duplicate JSON key`);
+					throw new JWTError(
+						"JWT_INVALID",
+						`Token ${what} contains a duplicate JSON key`
+					);
 				}
 				top.seen.add(value);
 				top.expectingKey = false;
@@ -149,11 +155,11 @@ export function parseJsonObject(text: string, what: string): Record<string, unkn
 	try {
 		parsed = JSON.parse(text);
 	} catch (cause) {
-		if (cause instanceof JWTInvalid) throw cause;
-		throw new JWTInvalid(`Token ${what} is not valid JSON`, { cause });
+		if (cause instanceof JWTError && cause.code === "JWT_INVALID") throw cause;
+		throw new JWTError("JWT_INVALID", `Token ${what} is not valid JSON`, { cause });
 	}
 	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-		throw new JWTInvalid(`Token ${what} is not a JSON object`);
+		throw new JWTError("JWT_INVALID", `Token ${what} is not a JSON object`);
 	}
 	assertNoDuplicateKeys(text, what);
 	return parsed as Record<string, unknown>;

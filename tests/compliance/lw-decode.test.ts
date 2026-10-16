@@ -7,8 +7,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import { Buffer } from "node:buffer";
-import { SignJWT, jwtVerify, unsafeDecode, JWTInvalid, type VerifiedJwt } from "../../index.js";
+import { SignJWT, jwtVerify, unsafeDecode, type VerifiedJwt } from "../../index.js";
 import { AUDIENCE, ISSUER, hmac, hmacProfile } from "./_shared.js";
 
 test("[LW-decode.1] unsafeDecode reads tampered and expired tokens - and jwtVerify still refuses them", async () => {
@@ -20,7 +21,7 @@ test("[LW-decode.1] unsafeDecode reads tampered and expired tokens - and jwtVeri
 	const untrusted = unsafeDecode(tampered);
 	assert.equal(untrusted.payload.iss, ISSUER);
 	// ...but the only path that can produce a VerifiedJwt rejects it.
-	await assert.rejects(jwtVerify(tampered, hmacProfile()), JWTInvalid);
+	await assert.rejects(jwtVerify(tampered, hmacProfile()), refusal("JWT_INVALID"));
 });
 
 test("[LW-decode.1] the decoded result is branded Untrusted and cannot be used as a VerifiedJwt", async () => {
@@ -34,13 +35,13 @@ test("[LW-decode.1] the decoded result is branded Untrusted and cannot be used a
 });
 
 test("[LW-decode.1] unsafeDecode still refuses structurally malformed tokens", () => {
-	assert.throws(() => unsafeDecode("not-a-token"), JWTInvalid);
-	assert.throws(() => unsafeDecode("a.b"), JWTInvalid);
-	assert.throws(() => unsafeDecode(""), JWTInvalid);
+	assert.throws(() => unsafeDecode("not-a-token"), refusal("JWT_INVALID"));
+	assert.throws(() => unsafeDecode("a.b"), refusal("JWT_INVALID"));
+	assert.throws(() => unsafeDecode(""), refusal("JWT_INVALID"));
 });
 
 test("[LW-decode.1] unsafeDecode refuses a __proto__ member name like any other malformed token", () => {
 	const header = Buffer.from("{\"alg\":\"EdDSA\",\"typ\":\"at+jwt\"}").toString("base64url");
 	const payload = Buffer.from("{\"sub\":\"user-42\",\"__proto__\":{\"isAdmin\":true}}").toString("base64url");
-	assert.throws(() => unsafeDecode(`${header}.${payload}.c2ln`), { name: "JWTInvalid", code: "JWT_INVALID" });
+	assert.throws(() => unsafeDecode(`${header}.${payload}.c2ln`), { name: "JWTError", code: "JWT_INVALID" });
 });

@@ -7,7 +7,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTokenCookie, setTokenCookie, readTokenCookie, parseBearer, BearerParseFailed } from "../../index.js";
+import { refusal } from "../helpers.js";
+import { buildTokenCookie, setTokenCookie, readTokenCookie, parseBearer } from "../../index.js";
 
 const TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1c2VyIn0.c2ln";
 
@@ -48,14 +49,14 @@ test("[LW-http.2] the bearer parser is strict: casing, whitespace and multi-toke
 		"Bearer", // no token
 		"",
 	]) {
-		assert.throws(() => parseBearer(bad), BearerParseFailed, `should reject: ${bad.slice(0, 24)}`);
+		assert.throws(() => parseBearer(bad), refusal("BEARER_PARSE_FAILED"), `should reject: ${bad.slice(0, 24)}`);
 	}
 });
 
 test("[LW-http.2] there is no query-string token path at all", () => {
 	// The parser only ever looks at the Authorization header. A URL carrying
 	// ?access_token=... is not a thing Lacewing can be asked to read.
-	assert.throws(() => parseBearer("?access_token=" + TOKEN), BearerParseFailed);
-	assert.throws(() => parseBearer(null), BearerParseFailed);
-	assert.throws(() => parseBearer(undefined), BearerParseFailed);
+	assert.throws(() => parseBearer("?access_token=" + TOKEN), refusal("BEARER_PARSE_FAILED"));
+	assert.throws(() => parseBearer(null), refusal("BEARER_PARSE_FAILED"));
+	assert.throws(() => parseBearer(undefined), refusal("BEARER_PARSE_FAILED"));
 });

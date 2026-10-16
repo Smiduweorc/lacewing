@@ -29,17 +29,8 @@ import {
 	jwtDecrypt,
 	importEncryptionKey,
 	EncryptJWT,
-	AlgorithmNotAllowed,
-	JWTInvalid,
-	JWTExpired,
-	JWTClaimValidationFailed,
-	MissingClaim,
-	EntropyCheckFailed,
-	JWTRevoked,
-	KeyTypeMismatch,
-	BearerParseFailed,
-	PayloadHygieneViolation,
 	type ExpectedJwtProfile,
+	type JWTErrorCode,
 } from "../../index.js";
 import {
 	b64uJson,
@@ -47,21 +38,9 @@ import {
 	craftHmacTokenRaw,
 	craftUnsignedToken,
 	nowSeconds,
+	refusal,
 	standardClaims,
 } from "../helpers.js";
-
-const ERRORS: Record<string, abstract new (...args: never[]) => Error> = {
-	AlgorithmNotAllowed,
-	JWTInvalid,
-	JWTExpired,
-	JWTClaimValidationFailed,
-	MissingClaim,
-	EntropyCheckFailed,
-	JWTRevoked,
-	KeyTypeMismatch,
-	BearerParseFailed,
-	PayloadHygieneViolation,
-};
 
 // A fixed, corpus-owned HS256 secret so HMAC vectors are reproducible from the
 // JSON alone. 32 bytes, deliberately containing non-printable values so the
@@ -112,8 +91,7 @@ interface Vector {
 	attacks: string;
 	reference?: string;
 	relatedRequirements: string[];
-	expectedError: keyof typeof ERRORS;
-	expectedCode?: string;
+	expectedCode: JWTErrorCode;
 	target?: "verify" | "bearer" | "decrypt";
 	profile?: "hmac" | "eddsa" | "es256";
 	recipe: Recipe;
@@ -193,10 +171,7 @@ for (const file of files) {
 	const vector = JSON.parse(readFileSync(join(VECTORS_DIR, file), "utf8")) as Vector;
 	const tags = vector.relatedRequirements.map((id) => `[${id}]`).join("");
 
-	test(`${tags} corpus/${file}: ${vector.name} - rejected with ${vector.expectedError}`, async () => {
-		const ErrorClass = ERRORS[vector.expectedError];
-		assert.ok(ErrorClass, `${file}: unknown expectedError "${vector.expectedError}"`);
-
+	test(`${tags} corpus/${file}: ${vector.name} - rejected with ${vector.expectedCode}`, async () => {
 		// The JSON cast is unchecked at runtime: a typo'd target must fail
 		// loudly, not fall through to the verify path.
 		const target: string = vector.target ?? "verify";
@@ -205,10 +180,7 @@ for (const file of files) {
 		const token = await assembleToken(vector.recipe);
 
 		const check = (error: unknown): true => {
-			assert.ok(error instanceof ErrorClass, `${file}: expected ${vector.expectedError}, got ${(error as Error)?.constructor?.name}`);
-			if (vector.expectedCode !== undefined) {
-				assert.equal((error as { code?: string }).code, vector.expectedCode, `${file}: wrong error code`);
-			}
+			refusal(vector.expectedCode)(error);
 			// Hygiene: a rejection message must never echo raw token content.
 			for (const segment of token.split(".")) {
 				if (segment.length >= 12) {

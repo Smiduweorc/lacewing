@@ -8,10 +8,10 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import { createRemoteJWKSet } from "../../index.js";
 import { generateKeyPair, exportKeyJWK } from "../../index.js";
 import { toValidAlg } from "../../src/lib/algorithms.js";
-import { JWKSNoMatchingKey } from "../../index.js";
 import type { JwtHeader, StaticJWK } from "../../src/types.js";
 
 const skip = process.env.LACEWING_SKIP_SECURITY === "1";
@@ -60,7 +60,7 @@ test("@security unknown-kid flooding cannot drive a fetch storm (cooldown holds)
 
 	await source.getVerificationKey(header("alice"), ALLOWED); // fetch #1 (populates cache)
 	for (let i = 0; i < 100; i++) {
-		await assert.rejects(source.getVerificationKey(header(`attacker-${i}`), ALLOWED), JWKSNoMatchingKey);
+		await assert.rejects(source.getVerificationKey(header(`attacker-${i}`), ALLOWED), refusal("JWKS_NO_MATCHING_KEY"));
 	}
 	assert.equal(calls(), 1, "100 unknown-kid requests must not cause a second fetch");
 });

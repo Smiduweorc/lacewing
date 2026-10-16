@@ -9,5 +9,5 @@
 	"keyAlg": "A128KW",
 	"profile": { "typ": "JWT", "issuer": "joe", "audience": "https://api.example.com", "keyManagementAlgorithms": ["A128KW"], "contentEncryptionAlgorithms": ["A128CBC-HS256"], "maxTokenAge": "3650d" },
 	"relatedRequirements": ["LW-enc.3"],
-	"expect": { "outcome": "reject", "error": "JWTInvalid", "code": "JWT_INVALID" }
+	"expect": { "outcome": "reject", "code": "JWT_INVALID" }
 }

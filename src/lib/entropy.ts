@@ -7,7 +7,7 @@
  *     `secret: "my-secret"` misuse - even when they are long enough.
  */
 
-import { EntropyCheckFailed } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { getAlgorithmProperties } from "./algorithms.js";
 
 // Substrings that only ever show up in human-chosen secrets.
@@ -143,7 +143,7 @@ export function isPasswordLike(bytes: Uint8Array): boolean {
 
 /**
  * Validate an HMAC secret for the given HS* algorithm.
- * Throws {@link EntropyCheckFailed} when the secret is too short or
+ * Throws `ENTROPY_CHECK_FAILED` when the secret is too short or
  * looks like a password.
  *
  * A printable secret is measured by what its encoding carries, not its byte
@@ -153,20 +153,23 @@ export function validateHMACSecret(secret: Uint8Array, algorithmName: string): v
 	const { minKeyBits } = getAlgorithmProperties(algorithmName);
 	const minBytes = Math.ceil(minKeyBits / 8);
 	if (secret.length < minBytes) {
-		throw new EntropyCheckFailed(
+		throw new JWTError(
+			"ENTROPY_CHECK_FAILED",
 			`HMAC secret for ${algorithmName} must be at least ${minBytes} bytes ` +
 				"of cryptographically random data"
 		);
 	}
 	if (isPasswordLike(secret)) {
-		throw new EntropyCheckFailed(
+		throw new JWTError(
+			"ENTROPY_CHECK_FAILED",
 			"HMAC secret looks like a human-chosen password; use " +
 				"cryptographically random bytes (e.g. generateSecret())"
 		);
 	}
 	const printable = secret.every((b) => b >= 0x20 && b <= 0x7e);
 	if (printable && encodedSecretBits(new TextDecoder().decode(secret)) < minKeyBits) {
-		throw new EntropyCheckFailed(
+		throw new JWTError(
+			"ENTROPY_CHECK_FAILED",
 			`HMAC secret for ${algorithmName} must encode at least ${minKeyBits} bits; ` +
 				`that is ${Math.ceil(minKeyBits / 4)} hex or ${Math.ceil(minKeyBits / 6)} base64 characters`
 		);

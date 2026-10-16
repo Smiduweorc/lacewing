@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../../src/util/errors.js";
+import { refusal } from "../../helpers.js";
 import { Buffer } from "node:buffer";
 import fc from "fast-check";
 import { decodeBase64url, encodeBase64url } from "../../../src/lib/base64url.js";
-import { JWTInvalid } from "../../../src/util/errors.js";
 
 test("round-trips arbitrary bytes", () => {
 	const samples = [
@@ -23,24 +24,24 @@ test("encodes without padding or URL-unsafe characters", () => {
 });
 
 test("[strictness] rejects padding", () => {
-	assert.throws(() => decodeBase64url("QQ=="), JWTInvalid);
-	assert.throws(() => decodeBase64url("SGVsbG8="), JWTInvalid);
+	assert.throws(() => decodeBase64url("QQ=="), refusal("JWT_INVALID"));
+	assert.throws(() => decodeBase64url("SGVsbG8="), refusal("JWT_INVALID"));
 });
 
 test("[strictness] rejects whitespace and standard-base64 characters", () => {
 	for (const input of ["QUJ D", "QUJ\nD", " QUJD", "QUJD ", "a+b", "a/b", "a.b"]) {
-		assert.throws(() => decodeBase64url(input), JWTInvalid);
+		assert.throws(() => decodeBase64url(input), refusal("JWT_INVALID"));
 	}
 });
 
 test("[strictness] rejects impossible lengths", () => {
-	assert.throws(() => decodeBase64url("AAAAA"), JWTInvalid);
+	assert.throws(() => decodeBase64url("AAAAA"), refusal("JWT_INVALID"));
 });
 
 test("[strictness] rejects non-canonical trailing bits", () => {
 	// "_w" and "_x" would both decode to [0xff] in a lenient decoder.
 	assert.deepEqual(decodeBase64url("_w"), new Uint8Array([0xff]));
-	assert.throws(() => decodeBase64url("_x"), JWTInvalid);
+	assert.throws(() => decodeBase64url("_x"), refusal("JWT_INVALID"));
 });
 
 // The Buffer-backed decoder Lacewing shipped through 1.x, kept here as the
@@ -55,7 +56,7 @@ function portableDecode(encoded: string): Uint8Array | "refused" {
 	try {
 		return decodeBase64url(encoded);
 	} catch (error) {
-		assert.ok(error instanceof JWTInvalid);
+		assert.ok(error instanceof JWTError && error.code === "JWT_INVALID");
 		return "refused";
 	}
 }

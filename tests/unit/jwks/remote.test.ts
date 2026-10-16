@@ -1,10 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../../helpers.js";
 import { createRemoteJWKSet } from "../../../src/jwks/remote.js";
 import { generateKeyPair } from "../../../src/key/generate.js";
 import { exportKeyJWK } from "../../../src/key/export.js";
 import { toValidAlg } from "../../../src/lib/algorithms.js";
-import { JWKSFetchFailed, JWKSNoMatchingKey } from "../../../src/util/errors.js";
 import type { JwtHeader, StaticJWK } from "../../../src/types.js";
 
 const alice = await generateKeyPair("EdDSA", { extractable: true });
@@ -72,7 +72,7 @@ test("refetches once on unknown kid (rotation), then fails closed", async () => 
 	await assert.doesNotReject(source.getVerificationKey(header("bob"), ALLOWED));
 	assert.equal(calls(), 2);
 	// Still-unknown kids fail closed.
-	await assert.rejects(source.getVerificationKey(header("carol"), ALLOWED), JWKSNoMatchingKey);
+	await assert.rejects(source.getVerificationKey(header("carol"), ALLOWED), refusal("JWKS_NO_MATCHING_KEY"));
 });
 
 test("[LW-jwks.1] cooldown prevents unknown-kid fetch storms", async () => {
@@ -82,7 +82,7 @@ test("[LW-jwks.1] cooldown prevents unknown-kid fetch storms", async () => {
 	for (let i = 0; i < 25; i++) {
 		await assert.rejects(
 			source.getVerificationKey(header(`attacker-${i}`), ALLOWED),
-			JWKSNoMatchingKey
+			refusal("JWKS_NO_MATCHING_KEY")
 		);
 	}
 	assert.equal(calls(), 1, "attacker-driven kids must not trigger refetches during cooldown");
@@ -97,16 +97,35 @@ test("non-OK responses and invalid bodies are typed fetch failures", async () =>
 	for (const respond of cases) {
 		const { fetch } = scriptedFetch([respond]);
 		const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 0 });
-		await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+		await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), refusal("JWKS_FETCH_FAILED"));
 	}
 });
 
-test("network errors surface as JWKSFetchFailed", async () => {
+test("an error from a caller-supplied fetch comes back as itself, not wrapped", async () => {
+	const refused = new Error("ECONNREFUSED");
 	const failingFetch = (async () => {
-		throw new Error("ECONNREFUSED");
+		throw refused;
 	}) as unknown as typeof fetch;
 	const source = createRemoteJWKSet(URL_, { fetch: failingFetch, cooldownSeconds: 0 });
-	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), (error) => error === refused);
+});
+
+test("a failure of the global fetch is refused as JWKS_FETCH_FAILED, keeping the cause", async () => {
+	const refused = new TypeError("fetch failed");
+	const original = globalThis.fetch;
+	globalThis.fetch = (async () => {
+		throw refused;
+	}) as unknown as typeof fetch;
+	try {
+		const source = createRemoteJWKSet(URL_, { cooldownSeconds: 0 });
+		await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), (error) => {
+			refusal("JWKS_FETCH_FAILED")(error);
+			assert.equal((error as Error).cause, refused);
+			return true;
+		});
+	} finally {
+		globalThis.fetch = original;
+	}
 });
 
 test("stale keys keep serving when the endpoint goes down after a good fetch", async () => {
@@ -135,8 +154,9 @@ test("concurrent verifications share a single fetch", async () => {
 
 test("[LW-jwks.2] stale keys stop serving once the stale-while-error window closes", async () => {
 	let fail = false;
+	const down = new Error("endpoint down");
 	const impl = (async () => {
-		if (fail) throw new Error("endpoint down");
+		if (fail) throw down;
 		return jwksResponse([aliceJwk]);
 	}) as unknown as typeof fetch;
 	// staleWhileErrorSeconds: 0 - an unreachable endpoint fails closed at once.
@@ -149,8 +169,9 @@ test("[LW-jwks.2] stale keys stop serving once the stale-while-error window clos
 	await source.getVerificationKey(header("alice"), ALLOWED);
 	fail = true;
 	// A key rotated out because it was compromised must not stay trusted for
-	// as long as an attacker can keep the endpoint down.
-	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	// as long as an attacker can keep the endpoint down. The fetch is the
+	// caller's, so its own error is what surfaces.
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), (error) => error === down);
 });
 
 test("[LW-jwks.2] the stale window is also enforced while cooling down", async () => {
@@ -167,7 +188,7 @@ test("[LW-jwks.2] the stale window is also enforced while cooling down", async (
 	});
 	await source.getVerificationKey(header("alice"), ALLOWED);
 	fail = true;
-	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), refusal("JWKS_FETCH_FAILED"));
 });
 
 test("staleWhileErrorSeconds is validated", () => {
@@ -196,7 +217,7 @@ test("[LW-jwks.3] an oversized response is refused via Content-Length, before re
 		},
 	})) as unknown as typeof fetch;
 	const source = createRemoteJWKSet(URL_, { fetch: impl, cooldownSeconds: 0 });
-	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), refusal("JWKS_FETCH_FAILED"));
 	assert.equal(bodyRead, false, "the body must not be pulled once the declared size is oversized");
 });
 
@@ -220,7 +241,7 @@ test("[LW-jwks.3] an oversized chunked response is abandoned mid-stream", async 
 			{ status: 200 }
 		)) as unknown as typeof fetch;
 	const source = createRemoteJWKSet(URL_, { fetch: impl, cooldownSeconds: 0 });
-	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), JWKSFetchFailed);
+	await assert.rejects(source.getVerificationKey(header("alice"), ALLOWED), refusal("JWKS_FETCH_FAILED"));
 	assert.ok(
 		bytesProduced <= 2 * 1024 * 1024,
 		`stream should be abandoned near the 1MB cap, produced ${bytesProduced} bytes`
@@ -234,7 +255,7 @@ test("[LW-jwks.4] symmetric keys are refused from a remote JWKS", async () => {
 	const { fetch } = scriptedFetch([() => jwksResponse([octJwk])]);
 	const source = createRemoteJWKSet(URL_, { fetch, cooldownSeconds: 0 });
 	const hs: JwtHeader = { alg: toValidAlg("HS256"), typ: "at+jwt", kid: "shared" };
-	await assert.rejects(source.getVerificationKey(hs, [toValidAlg("HS256")]), JWKSNoMatchingKey);
+	await assert.rejects(source.getVerificationKey(hs, [toValidAlg("HS256")]), refusal("JWKS_NO_MATCHING_KEY"));
 });
 
 test("[8725-3.1.2] a remote RSA key without alg is refused when the profile allows several RSA algorithms", async () => {
@@ -245,7 +266,7 @@ test("[8725-3.1.2] a remote RSA key without alg is refused when the profile allo
 	const rsaHeader: JwtHeader = { alg: toValidAlg("PS512"), typ: "at+jwt", kid: "rsa" };
 	await assert.rejects(
 		source.getVerificationKey(rsaHeader, [toValidAlg("PS256"), toValidAlg("PS512")]),
-		JWKSNoMatchingKey
+		refusal("JWKS_NO_MATCHING_KEY")
 	);
 	const resolved = await source.getVerificationKey(rsaHeader, [toValidAlg("PS512")]);
 	assert.equal(resolved.alg, "PS512");

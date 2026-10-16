@@ -8,6 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { refusal } from "../helpers.js";
 import fc from "fast-check";
 import {
 	SignJWT,
@@ -16,7 +17,6 @@ import {
 	defineProfile,
 	generateSecret,
 	MemoryRevocationStore,
-	JWTRevoked,
 	type ExpectedJwtProfile,
 	type RevocationStore,
 } from "../../index.js";
@@ -66,7 +66,7 @@ test("[LW-rev.2] revoking a token's own jti always rejects the next verification
 			const payload = unsafeDecode(token).payload;
 			const store = new MemoryRevocationStore();
 			store.revoke(payload.jti as string, payload.exp);
-			await assert.rejects(jwtVerify(token, profileWith(store)), JWTRevoked);
+			await assert.rejects(jwtVerify(token, profileWith(store)), refusal("JWT_REVOKED"));
 		}),
 		{ numRuns: 15 }
 	);

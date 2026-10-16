@@ -12,12 +12,11 @@ import {
 	defineProfile,
 	generateSecret,
 	MemoryRevocationStore,
-	RevocationCheckFailed,
 	type ExpectedJwtProfile,
 	type RevocationStore,
 	type TokenRevocationContext,
 } from "../../index.js";
-import { craftHmacToken, nowSeconds, standardClaims } from "../helpers.js";
+import { craftHmacToken, nowSeconds, standardClaims, refusal } from "../helpers.js";
 
 const skip = process.env.LACEWING_SKIP_SECURITY === "1";
 
@@ -69,7 +68,7 @@ test("@security [LW-rev.4] a store that hangs then times out fails closed", { sk
 		},
 	};
 	const token = await new SignJWT("at+jwt").issuer(ISSUER).audience(AUDIENCE).expiresIn("5m").sign(hmac);
-	await assert.rejects(jwtVerify(token, profileWith(slow)), RevocationCheckFailed);
+	await assert.rejects(jwtVerify(token, profileWith(slow)), refusal("REVOCATION_CHECK_FAILED"));
 });
 
 test("@security [LW-rev.2] the in-memory store does not treat an expired revocation as live", { skip }, async () => {

@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { JWTError } from "../../../src/util/errors.js";
+import { refusal } from "../../helpers.js";
 import { scanPayloadForSensitiveData } from "../../../src/lib/payload_hygiene.js";
-import { PayloadHygieneViolation } from "../../../src/util/errors.js";
 
 test("[LW-payload.1] sensitive claim names are rejected", () => {
 	const payloads = [
@@ -21,7 +22,7 @@ test("[LW-payload.1] sensitive claim names are rejected", () => {
 	for (const payload of payloads) {
 		assert.throws(
 			() => scanPayloadForSensitiveData(payload),
-			PayloadHygieneViolation,
+			refusal("PAYLOAD_HYGIENE_VIOLATION"),
 			`expected rejection: ${Object.keys(payload)[0]}`
 		);
 	}
@@ -30,11 +31,11 @@ test("[LW-payload.1] sensitive claim names are rejected", () => {
 test("[LW-payload.1] nested sensitive names have no blind spots", () => {
 	assert.throws(
 		() => scanPayloadForSensitiveData({ profile: { settings: { apiKey: "x" } } }),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 	assert.throws(
 		() => scanPayloadForSensitiveData({ items: [{ password: "x" }] }),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 });
 
@@ -42,7 +43,7 @@ test("[LW-payload.2] Luhn-valid card numbers are rejected, with separators too",
 	for (const card of ["4111111111111111", "4111 1111 1111 1111", "4111-1111-1111-1111"]) {
 		assert.throws(
 			() => scanPayloadForSensitiveData({ note: card }),
-			PayloadHygieneViolation
+			refusal("PAYLOAD_HYGIENE_VIOLATION")
 		);
 	}
 	// Luhn-invalid digit strings are allowed (could be an order id).
@@ -55,11 +56,11 @@ test("[LW-payload.2] PEM private-key blocks are rejected", () => {
 			scanPayloadForSensitiveData({
 				config: "-----BEGIN PRIVATE KEY-----\nMC4C...\n-----END PRIVATE KEY-----",
 			}),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 	assert.throws(
 		() => scanPayloadForSensitiveData({ config: "-----BEGIN RSA PRIVATE KEY-----" }),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 	// Public certificates are not secrets.
 	assert.doesNotThrow(() =>
@@ -72,7 +73,7 @@ test("[LW-payload.2] values that look like other JWTs are rejected", () => {
 		"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r_wW1gFWFOEjXk";
 	assert.throws(
 		() => scanPayloadForSensitiveData({ upstream: jwtish }),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 });
 
@@ -94,7 +95,7 @@ test("[LW-payload] errors name the claim but never echo its value", () => {
 		scanPayloadForSensitiveData({ password: "hunter2-super-secret" });
 		assert.fail("should have thrown");
 	} catch (error) {
-		assert.ok(error instanceof PayloadHygieneViolation);
+		assert.ok(error instanceof JWTError && error.code === "PAYLOAD_HYGIENE_VIOLATION");
 		assert.equal(error.claim, "password");
 		assert.ok(!error.message.includes("hunter2"));
 	}
@@ -118,7 +119,7 @@ test("[LW-payload.2] numeric ids are not mistaken for payment cards", () => {
 	for (const id of [
 		"4532015112830366", // 16 digits, Luhn-valid, but Visa-prefixed -> still a card
 	]) {
-		assert.throws(() => scanPayloadForSensitiveData({ sub: id }), PayloadHygieneViolation);
+		assert.throws(() => scanPayloadForSensitiveData({ sub: id }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 	}
 	for (const id of [
 		"755193776567357440", // Discord-style snowflake, 18 digits, Luhn-valid
@@ -140,7 +141,7 @@ test("[LW-payload.2] every card brand is still caught", () => {
 	]) {
 		assert.throws(
 			() => scanPayloadForSensitiveData({ note: card }),
-			PayloadHygieneViolation,
+			refusal("PAYLOAD_HYGIENE_VIOLATION"),
 			`missed ${card}`
 		);
 	}
@@ -157,7 +158,7 @@ test("[LW-payload.2] dotted identifiers are not mistaken for embedded JWTs", () 
 	// Real tokens, including an unsigned one, still trip it.
 	assert.throws(
 		() => scanPayloadForSensitiveData({ upstream: "eyJhbGciOiJub25lIn0.eyJzdWIiOiIxMjM0NTY3ODkwIn0." }),
-		PayloadHygieneViolation
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
 	);
 });
 
@@ -166,6 +167,6 @@ test("[LW-payload.1] standard OAuth metadata claims are not sensitive names", ()
 	assert.doesNotThrow(() => scanPayloadForSensitiveData({ token_use: "access" }));
 	assert.doesNotThrow(() => scanPayloadForSensitiveData({ token_type: "Bearer" }));
 	// The fragment still bites where it should.
-	assert.throws(() => scanPayloadForSensitiveData({ access_token: "x" }), PayloadHygieneViolation);
-	assert.throws(() => scanPayloadForSensitiveData({ refresh_token: "x" }), PayloadHygieneViolation);
+	assert.throws(() => scanPayloadForSensitiveData({ access_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	assert.throws(() => scanPayloadForSensitiveData({ refresh_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 });

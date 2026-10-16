@@ -12,7 +12,7 @@
  * it lower `minKeyBits` for every key Lacewing imports afterwards.
  */
 
-import { AlgorithmNotAllowed } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { SetAlg, type ValidAlg } from "../types.js";
 
 export interface AlgorithmInfo {
@@ -52,12 +52,12 @@ export function isValidAlgorithm(alg: string): boolean {
 	return registry.has(alg);
 }
 
-/** Look up an algorithm's properties, or throw {@link AlgorithmNotAllowed}. */
+/** Look up an algorithm's properties, or throw `ALGORITHM_NOT_ALLOWED`. */
 export function getAlgorithmProperties(alg: string): AlgorithmInfo {
 	const info = registry.get(alg);
 	if (info === undefined) {
 		// Deliberately does not echo `alg`: it may be attacker-controlled.
-		throw new AlgorithmNotAllowed("Algorithm is not in the Lacewing allowlist");
+		throw new JWTError("ALGORITHM_NOT_ALLOWED", "Algorithm is not in the Lacewing allowlist");
 	}
 	return info;
 }
@@ -79,7 +79,7 @@ export function listAlgorithms(): string[] {
  */
 export function registerLegacyAlgorithm(info: AlgorithmInfo): void {
 	if (info.name.toLowerCase() === "none") {
-		throw new AlgorithmNotAllowed("Algorithm 'none' is not allowed");
+		throw new JWTError("ALGORITHM_NOT_ALLOWED", "Algorithm 'none' is not allowed");
 	}
 	if (!registry.has(info.name)) {
 		registry.set(info.name, Object.freeze({ ...info }));

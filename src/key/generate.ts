@@ -5,7 +5,7 @@
  */
 
 import { generateKeyPair as joseGenerateKeyPair } from "jose";
-import { KeyImportFailed, KeyTypeMismatch } from "../util/errors.js";
+import { JWTError } from "../util/errors.js";
 import { getAlgorithmProperties } from "../lib/algorithms.js";
 import { createLacewingKey, SetAlg, type LacewingKey } from "../types.js";
 
@@ -26,7 +26,8 @@ export async function generateKeyPair<const Alg extends string = "EdDSA">(
 ): Promise<{ publicKey: LacewingKey<Alg>; privateKey: LacewingKey<Alg> }> {
 	const info = getAlgorithmProperties(algorithm);
 	if (info.kty === "oct") {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			`${algorithm} is symmetric - use generateSecret() instead`
 		);
 	}
@@ -40,7 +41,7 @@ export async function generateKeyPair<const Alg extends string = "EdDSA">(
 			privateKey: createLacewingKey(alg, "private", privateKey),
 		};
 	} catch (cause) {
-		throw new KeyImportFailed("Key generation failed", { cause });
+		throw new JWTError("KEY_IMPORT_FAILED", "Key generation failed", { cause });
 	}
 }
 
@@ -54,7 +55,8 @@ export function generateSecret<const Alg extends string = "HS256">(
 ): LacewingKey<Alg> {
 	const info = getAlgorithmProperties(algorithm);
 	if (info.kty !== "oct") {
-		throw new KeyTypeMismatch(
+		throw new JWTError(
+			"KEY_TYPE_MISMATCH",
 			`${algorithm} is asymmetric - use generateKeyPair() instead`
 		);
 	}

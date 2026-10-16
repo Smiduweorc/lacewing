@@ -45,8 +45,7 @@ test("lacewing/extension exposes exactly its four helpers, working", async () =>
 
 test("the extension and the root share one registry, not two copies", async () => {
 	const extension = await import("lacewing/extension");
-	const { AlgorithmNotAllowed } = await import("lacewing");
-	assert.throws(() => extension.getAlgorithmProperties("RS256"), AlgorithmNotAllowed);
+	assert.throws(() => extension.getAlgorithmProperties("RS256"), { name: "JWTError", code: "ALGORITHM_NOT_ALLOWED" });
 	const { enableLegacyRS256 } = await import("lacewing/legacy/rs256");
 	enableLegacyRS256();
 	assert.equal(extension.getAlgorithmProperties("RS256").kty, "RSA");
