@@ -125,3 +125,30 @@ test("a random key whose base64 happens to spell a common word is rejected", () 
 	assert.throws(() => validateHMACSecret(encoder.encode(bytes.toString("base64")), resolveAlgorithm("HS256")), refusal("ENTROPY_CHECK_FAILED"));
 	assert.doesNotThrow(() => validateHMACSecret(encoder.encode(bytes.toString("hex")), resolveAlgorithm("HS256")));
 });
+
+// Found in the v3 house-rules audit: 32 x 0x07 from a custom key source
+// passed, because only printable secrets were screened for patterns.
+test("[8725-3.5.1] a binary secret that is one short pattern repeated is rejected", () => {
+	const hs256 = resolveAlgorithm("HS256");
+	const repeatedHalf = globalThis.crypto.getRandomValues(new Uint8Array(16));
+	for (const secret of [
+		new Uint8Array(32), // all zeros
+		new Uint8Array(32).fill(7),
+		Uint8Array.from({ length: 32 }, (_, i) => [0x8f, 0x01, 0xfe, 0x90][i % 4] as number),
+		Uint8Array.from([...repeatedHalf, ...repeatedHalf]),
+	]) {
+		assert.throws(() => validateHMACSecret(secret, hs256), refusal("ENTROPY_CHECK_FAILED"));
+	}
+});
+
+test("random binary secrets never trip the repeated-pattern check, over many samples", () => {
+	for (const algorithm of ["HS256", "HS384", "HS512"]) {
+		const info = resolveAlgorithm(algorithm);
+		for (let i = 0; i < 2000; i++) {
+			const secret = globalThis.crypto.getRandomValues(new Uint8Array(info.minKeyBits / 8));
+			// Random bytes can land all-printable; those go through the printable rules instead.
+			if (secret.every((b) => b >= 0x20 && b <= 0x7e)) continue;
+			assert.doesNotThrow(() => validateHMACSecret(secret, info));
+		}
+	}
+});

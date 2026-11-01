@@ -68,11 +68,16 @@ function longestAscendingRun(text: string): number {
 	return longest;
 }
 
-/** Whether the text is one shorter chunk repeated ("deadbeefdeadbeef..."). */
-function isPeriodic(text: string): boolean {
-	for (let period = 1; period <= text.length / 2; period++) {
-		if (text.length % period !== 0) continue;
-		if (text.slice(period) === text.slice(0, -period)) return true;
+/** Whether the sequence is one shorter chunk repeated ("deadbeefdeadbeef...", or 32 x 0x07). */
+function isPeriodic(sequence: string | Uint8Array): boolean {
+	const length = sequence.length;
+	for (let period = 1; period <= length / 2; period++) {
+		if (length % period !== 0) continue;
+		let repeats = true;
+		for (let i = period; i < length && repeats; i++) {
+			repeats = sequence[i] === sequence[i - period];
+		}
+		if (repeats) return true;
 	}
 	return false;
 }
@@ -167,6 +172,16 @@ export function validateHMACSecret(secret: Uint8Array, algorithm: AlgorithmInfo)
 		);
 	}
 	const printable = secret.every((b) => b >= 0x20 && b <= 0x7e);
+	// Raw random bytes are never one short pattern repeated; a buffer that is
+	// (all zeros, `fill(7)`, a copied 4-byte block) carries a handful of bits
+	// whatever its length. A random 32-byte key is periodic with odds near
+	// 1 in 2^128 (its two halves equal), so random keys never trip it.
+	if (!printable && isPeriodic(secret)) {
+		throw new JWTError(
+			"ENTROPY_CHECK_FAILED",
+			"HMAC secret is one short byte pattern repeated; use cryptographically random bytes (e.g. generateSecret())"
+		);
+	}
 	if (printable && encodedSecretBits(new TextDecoder().decode(secret)) < minKeyBits) {
 		throw new JWTError(
 			"ENTROPY_CHECK_FAILED",
