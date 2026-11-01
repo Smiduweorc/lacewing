@@ -1,0 +1,38 @@
+{
+	"name": "python-cryptography-produced ECDH-ES+A256KW/A256GCM JWE that meets policy - decrypts",
+	"source": "pyca/cryptography ECDH, ConcatKDFHash, aes_key_wrap and AESGCM over the compact-JWE construction (no jose involved)",
+	"description": "A policy-compliant encrypted JWT assembled by hand: P-256 ECDH with an ephemeral key carried as epk, the RFC 7518 4.6.2 Concat KDF with empty apu/apv, the CEK wrapped with AES-256 key wrap, and AES-256-GCM over the payload with the protected header as AAD. Written by tools/golden-vectors.py. Clock pinned to 2026-01-01T00:01:00Z.",
+	"format": "jwe",
+	"clockAt": 1767225660,
+	"token": "eyJhbGciOiJFQ0RILUVTK0EyNTZLVyIsImVuYyI6IkEyNTZHQ00iLCJ0eXAiOiJhdCtqd3QiLCJlcGsiOnsia3R5IjoiRUMiLCJjcnYiOiJQLTI1NiIsIngiOiJUV2tqODdUT3dUbGpYQWlOaVhRT3pLZzY2OEVaaGJiZ05JWG5QVWRCX0k0IiwieSI6IlRKZmJ1b3NpaTlaZnhYd1MtTExPVlRPbEp4UUxFVVIxZEpoRXROUExDWU0ifX0.yTMY6fhbKUhpaMmwD48EuZGgec6fJibQQN764XMxmnnM6NgwFUHVkA.HbFsvoi5JpONRWyk.0sNCy0dbdQNdS1fSxwBwtFFc7YlDD3SM39ZEvFFCJi0UlL5uckz9BeSftt1Qf5_BuhAY8Pg9DXaTW3aqD2Jbynng3heI40O_8n7xgKeKJ_H36TiOMwUleaeRu7KigeSMlhfdniLkNI729rRfR1mEwcfdjOZkLFETQOdt84GMApWBuwTmyX2iHAE4.p9aJ1IdvjCsrQSmEn8OFZg",
+	"key": {
+		"kty": "EC",
+		"crv": "P-256",
+		"x": "9AYkiBGMRWtpfkPZSNJkMtoT1Az4RAqEdEUKsbAsNuI",
+		"y": "RG0pFZKhCv7HPMst0QphZkJMMWkT1LgZvbQl8pct8O0",
+		"d": "JzrcenjNhm-JPH0SyLEV0UuFuKi6Fe9KyiX00XAAi-c"
+	},
+	"keyAlg": "ECDH-ES+A256KW",
+	"profile": {
+		"typ": "at+jwt",
+		"issuer": "https://auth.example.com",
+		"audience": "https://api.example.com",
+		"keyManagementAlgorithms": [
+			"ECDH-ES+A256KW"
+		],
+		"contentEncryptionAlgorithms": [
+			"A256GCM"
+		],
+		"maxTokenAge": "15m"
+	},
+	"relatedRequirements": [
+		"LW-enc.2"
+	],
+	"expect": {
+		"outcome": "accept",
+		"claims": {
+			"sub": "user-42",
+			"jti": "golden-ecdh-1"
+		}
+	}
+}

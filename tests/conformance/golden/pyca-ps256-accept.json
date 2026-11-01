@@ -1,0 +1,34 @@
+{
+	"name": "python-cryptography-produced PS256 token that meets policy - verifies",
+	"source": "pyca/cryptography RSAPrivateKey.sign with PSS/MGF1-SHA256, 32-byte salt (no jose involved)",
+	"description": "A policy-compliant PS256 token signed by pyca/cryptography over the exact signing input with RFC 7518 3.5 parameters, verified against a 2048-bit RSA public key as a JWK. Written by tools/golden-vectors.py. Clock pinned to 2026-01-01T00:01:00Z.",
+	"format": "jws",
+	"clockAt": 1767225660,
+	"token": "eyJhbGciOiJQUzI1NiIsInR5cCI6ImF0K2p3dCJ9.eyJpc3MiOiJodHRwczovL2F1dGguZXhhbXBsZS5jb20iLCJhdWQiOiJodHRwczovL2FwaS5leGFtcGxlLmNvbSIsInN1YiI6InVzZXItNDIiLCJqdGkiOiJnb2xkZW4tcHMyNTYtMSIsImlhdCI6MTc2NzIyNTYwMCwiZXhwIjoxNzY3MjI1OTAwfQ.W12_aawNuy4HzIrA_frq5T_d7QggSBpHvCqjS_1ezM_cYugO0C1XMZbg5ZhRIBULo1fwPYVc4OXn7ZeZRa7LafpZzZnF1ARLc818Bf-OOIBOPJYLdImdLWVAkSpZWuCv0lt4kcruSN868fSzPsjtxE7yFKDohnkhtU9y5PZZVi0GltSr7PlJ3set6QPdyj_YmYNB6RU-3KvONHXiNq3Rjn_Iwgy-tCaFQJ0HqIMI5furVSmKKYfHesOBL08nXsrnR3BUXGMEJsPsLYJjHKjWEx-1Kg0tRjo3PFEGxCwuPTdnXyUTucr9-2qghqQLt-uzaSD1Kz4ZVyTmGkJF2TkJgw",
+	"key": {
+		"kty": "RSA",
+		"n": "4muyStkkHXh7xKWGxxCgFcdd4cL5v-Ljz5hSUD1NGsJs-gv7FzKWGAK8Pqhm1B3WFndsKKya17eLuDPwMclaQbKIfjtDXk5RLHPhrsZfBqZcRV9TTJK4udSHYg-rF1oK3GbiyViCXlhYSBhFbrsQF-J47bQ3lQxGlH7b6Stz6VLkYrM7XcXW7gHOKbx80pNRKgPIE65HOSuXgn6r2nvFDCDUKOhaMxfeiXgqGagLNZun-Vf9mABhDwlH1TEyHR3toeKPrGYCwb4Oznu8poaK1ZTeprFY-8Z4vQ59etJvi2yRVJ7wN6jJDAtK3mn7uplw92jP4o8Z_040rOLnuJIMsw",
+		"e": "AQAB",
+		"alg": "PS256"
+	},
+	"keyAlg": "PS256",
+	"profile": {
+		"typ": "at+jwt",
+		"issuer": "https://auth.example.com",
+		"audience": "https://api.example.com",
+		"algorithms": [
+			"PS256"
+		],
+		"maxTokenAge": "15m"
+	},
+	"relatedRequirements": [
+		"8725-3.1.1"
+	],
+	"expect": {
+		"outcome": "accept",
+		"claims": {
+			"sub": "user-42",
+			"jti": "golden-ps256-1"
+		}
+	}
+}
