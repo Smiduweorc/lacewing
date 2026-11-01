@@ -488,6 +488,27 @@ tool if you send them to the client. Don't. Answer every refusal with
 `401 invalid_token` and keep the code server-side. Lacewing can't make that
 choice for your HTTP layer.
 
+### What Lacewing tells you, and whose clock it reads
+
+Lacewing never logs. Things you should know about that aren't refusals come
+to an `onEvent` you pass to a profile or to `createRemoteJWKSet`, as plain
+objects; what you do with them is your business, and a listener that throws
+is ignored rather than failing the token:
+
+| `type` | When |
+| --- | --- |
+| `jwks-refresh-failed` | a JWKS fetch failed (`url`, `cause`), once per fetch however many verifications shared it |
+| `jwks-stale-serving` | a verification used keys past their cache lifetime because the endpoint is down (`url`, `staleForSeconds`) |
+| `revocation-fail-open` | the store threw and `unsafeFailOpenOnRevocationError` let the token through anyway (`cause`) |
+
+If you turned on fail-open and don't listen for that last one, you've chosen
+not to know when your revocation is off. Your call, but now it's a visible one.
+
+Every place Lacewing reads the time (profiles, `SignJWT`, `EncryptJWT`,
+`createRemoteJWKSet`, `MemoryRevocationStore`) takes a `now` option in
+milliseconds, defaulting to `Date.now`, so tests drive time instead of
+sleeping or patching globals.
+
 ### Debugging
 
 `unsafeDecode(token)` parses without verifying and returns an `UntrustedJwt`
@@ -602,9 +623,12 @@ apologies:
 
 ## Known quirks
 
-- **Two copies of Lacewing do not share descriptors.** A `LEGACY_RS256` from
-  one installed copy is a forgery to another, because descriptors are checked
-  by identity. If a package you depend on brings its own Lacewing, `npm ls
+- **Two copies of Lacewing do not trust each other's objects.** Keys,
+  profiles, key sources and `LEGACY_*` descriptors carry provenance only the
+  copy that made them recognises, so that a look-alike object (or a
+  `{ ...profile, maxTokenAge: tenYears }`) can't skip the checks that built
+  the real one. The cost: a key imported by one installed copy is a forgery
+  to another. If a package you depend on brings its own Lacewing, `npm ls
   lacewing` shows it; dedupe to one copy.
 
 - **`x5t` in a header rejects the token.** Lacewing refuses `jku`, `x5u`,

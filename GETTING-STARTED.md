@@ -626,8 +626,12 @@ The codes:
 | `BEARER_PARSE_FAILED` | The `Authorization` header isn't exactly `Bearer <token>` |
 
 Misconfiguration (a profile with no `typ`, an `http:` JWKS URL, a malformed
-duration) is a `TypeError` at the call that builds the thing, not a
-`JWTError`.
+duration, a profile or key that Lacewing didn't build) is a `TypeError` at
+the call that receives it, not a `JWTError`. Lacewing's own refusals of a
+token are `JWTError`s, including when your `unsafeClaimValidators` function
+or your revocation store throws: those are verdicts on the token, so they come
+back as `JWT_CLAIM_VALIDATION_FAILED` and `REVOCATION_CHECK_FAILED` with your
+error as `cause`.
 
 Do not return a distinct HTTP response per code to unauthenticated callers.
 Use `401 invalid_token` for all of them and keep the detail in logs.
@@ -679,6 +683,8 @@ Step 3 waits one token lifetime.
 - [ ] Node framework? `new Headers(req.headers)` at the edge
 - [ ] A revocation store that survives a restart
 - [ ] A decision on what a store outage should do; the default fails closed
+- [ ] An `onEvent` listener wired to your logs or metrics, so a JWKS outage
+      or a fail-open revocation shows up somewhere
 - [ ] A rotation plan that accounts for the `kid` constraint in
       [§10](#10-distributing-keys-in-production)
 - [ ] `401 invalid_token` for every rejection; codes go to logs only

@@ -17,6 +17,9 @@ build or runtime error in 3.0 until you change it.
 | `staleWhileErrorSeconds` above 86400 | at most 86400 |
 | `refreshTokenProfile({...})` with no `revocation` | pass a store, or `unsafeNoRevocation: true` |
 | `unsafeAllowClaim("profile")` to get past one nested field | `unsafeAllowClaim("profile", "field")` waives only that field |
+| a profile, key or key source built by hand or copied with `{ ...x }` | build it with `defineProfile`, `importKey` and friends; copies throw `TypeError` |
+| `keys: source` after `unsafeCustomKeySource(source)` | pass the wrapper it returns, not the original object |
+| `notBefore` at or after `expiresIn` | throws `TypeError`; such a token could never be valid |
 
 The first four rows apply to both `defineProfile` and
 `defineDecryptionProfile`. Sources from `createLocalJWKSet` and
@@ -36,6 +39,14 @@ Behaviour that changed without an API change:
 - **`newRefreshToken()` caps lifetimes at 30 days**, down from 90, to match
   `refreshTokenProfile`'s default `maxTokenAge`. A 90-day refresh token was
   refused at day 30 anyway.
+- **Keys, profiles and key sources are unforgeable.** In 2.x an object
+  literal with `__brand: "LacewingKey"` signed with whatever bytes it held,
+  and `jwtVerify` accepted any object shaped like a profile, including one
+  with a decade of accepted age. Both are refused now.
+- **Binary HMAC secrets that repeat a short pattern** (all zeros, `fill(7)`)
+  throw `ENTROPY_CHECK_FAILED`, from `importKey`, a JWKS and custom sources.
+- **New and optional:** an `onEvent` listener on profiles and
+  `createRemoteJWKSet`, and a `now` clock option everywhere time is read.
 - **`MemoryRevocationStore` revokes by subject and session too**:
   `revokeSubject(sub, until)` and `revokeSession(sid, until)`. Revoking the
   same `jti` twice keeps the later expiry instead of the last one written.
