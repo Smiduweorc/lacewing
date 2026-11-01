@@ -27,7 +27,7 @@
  * | `ENTROPY_CHECK_FAILED` | HMAC secret is too short or looks human-chosen (§3.5). |
  * | `JWKS_FETCH_FAILED` | Remote JWKS could not be fetched or parsed. |
  * | `JWKS_NO_MATCHING_KEY` | No single key in the JWKS matches the token. |
- * | `JWT_REVOKED` | Token is valid but its `jti` is revoked. |
+ * | `JWT_REVOKED` | Token is valid but the revocation store says it is revoked. |
  * | `REVOCATION_CHECK_FAILED` | The revocation store errored and Lacewing failed closed. |
  * | `PAYLOAD_HYGIENE_VIOLATION` | A payload about to be signed carries sensitive data. Sets `claim`. |
  * | `MAX_LIFETIME_EXCEEDED` | Requested token lifetime exceeds the cap. |

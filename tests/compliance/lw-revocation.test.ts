@@ -48,6 +48,15 @@ test("[LW-rev.2] a revoked jti is rejected on the next verification", async () =
 	await assert.rejects(jwtVerify(token, profile), refusal("JWT_REVOKED"));
 });
 
+test("[LW-rev.2] revoking a subject rejects its tokens through jwtVerify", async () => {
+	const revocation = new MemoryRevocationStore();
+	const profile = hmacProfile({ revocation });
+	const token = await sign((b) => b.subject("user-42"));
+	await jwtVerify(token, profile);
+	revocation.revokeSubject("user-42", nowSeconds() + 600);
+	await assert.rejects(jwtVerify(token, profile), refusal("JWT_REVOKED"));
+});
+
 test("[LW-rev.3] the store is never consulted for a token that fails signature or claims", async () => {
 	const store = new RecordingStore();
 	const profile = hmacProfile({ revocation: store });
