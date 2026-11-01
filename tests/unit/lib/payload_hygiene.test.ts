@@ -217,3 +217,23 @@ test("[LW-payload.1] standard OAuth metadata claims are not sensitive names", ()
 	assert.throws(() => scanPayloadForSensitiveData({ access_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 	assert.throws(() => scanPayloadForSensitiveData({ refresh_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 });
+
+// Found in the second v3 audit: only strings were checked for card numbers
+// and nested tokens.
+test("[LW-payload.2] a card number written as a JSON number is refused", () => {
+	for (const value of [4111111111111111, 5555555555554444, 378282246310005]) {
+		assert.throws(() => scanPayloadForSensitiveData({ note: value }), refusal("PAYLOAD_HYGIENE_VIOLATION"), String(value));
+		assert.throws(() => scanPayloadForSensitiveData({ list: [{ n: value }] }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	}
+	for (const value of [4111111111111112, 755193776567357, 42, 0, -4111111111111111, 1.5, Number.MAX_SAFE_INTEGER]) {
+		assert.doesNotThrow(() => scanPayloadForSensitiveData({ note: value }), String(value));
+	}
+});
+
+test("[LW-payload.2] a compact JWE inside a payload is refused like a JWS", () => {
+	const header = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwidHlwIjoiYXQrand0In0";
+	const jwe = `${header}..AQIDBAUGBwgJCgsM.bdHiT7GuqmqaUn1NqL_wq2fuwY7nP1OIcJfggzEHJs2k.LxLVM5zPAQsVGmTpNyHD5A`;
+	assert.throws(() => scanPayloadForSensitiveData({ upstream: jwe }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	assert.throws(() => scanPayloadForSensitiveData({ upstream: jwe.replace("..", ".c2VjcmV0X3dyYXBwZWRfa2V5.") }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	assert.doesNotThrow(() => scanPayloadForSensitiveData({ host: "a.b.c.d.e" }), "five dotted words are not a JWE");
+});

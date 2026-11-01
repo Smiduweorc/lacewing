@@ -43,8 +43,11 @@ const PEM_PRIVATE_KEY = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 // A compact JWS/JWE always begins with a base64url-encoded JSON object, and
 // `{"` encodes to `eyJ`. Anchoring on that keeps ordinary dotted identifiers
 // (bare hostnames, reverse-DNS names) from reading as embedded tokens. The
-// last segment may be empty - that is exactly an `alg: none` token.
+// last JWS segment may be empty - that is exactly an `alg: none` token.
 const JWT_LIKE = /^eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*$/;
+// A compact JWE: header, encrypted key (empty under `dir`), IV, ciphertext,
+// tag. Encrypted or not, a token inside a token is a credential in plaintext.
+const JWE_LIKE = /^eyJ[A-Za-z0-9_-]{7,}\.[A-Za-z0-9_-]*\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{10,}$/;
 
 /**
  * Standard OAuth/OIDC claim names that describe *this* token rather than
@@ -144,7 +147,7 @@ function checkValue(topLevelClaim: string, value: string): void {
 			{ claim: topLevelClaim }
 		);
 	}
-	if (JWT_LIKE.test(value)) {
+	if (JWT_LIKE.test(value) || JWE_LIKE.test(value)) {
 		throw new JWTError(
 			"PAYLOAD_HYGIENE_VIOLATION",
 			`Claim "${topLevelClaim}" contains what looks like another JWT. ` +
@@ -170,6 +173,13 @@ function scanNode(
 ): void {
 	if (typeof value === "string") {
 		checkValue(topLevelClaim, value);
+		return;
+	}
+	// A card number written as a JSON number is still a card number. Only
+	// safe integers keep all their digits; anything longer has already lost
+	// some and is no PAN.
+	if (typeof value === "number" && Number.isSafeInteger(value) && value > 0) {
+		checkValue(topLevelClaim, String(value));
 		return;
 	}
 	if (Array.isArray(value)) {
