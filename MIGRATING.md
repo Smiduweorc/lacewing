@@ -1,9 +1,51 @@
+# Migrating from 2.x to 3.0
+
+3.0 makes every remaining way to loosen a check carry an `unsafe` name you
+can grep for, makes the caller name the numbers only the caller knows, and
+fixes two v2 behaviours that did not do what the docs said. Each row is a
+build or runtime error in 3.0 until you change it.
+
+| 2.x | 3.0 |
+| --- | --- |
+| `maxTokenAge` above 30 days | add `unsafeAllowLongTokenAge: true` |
+| `maxClockSkew` above 30s (up to 120s) | add `unsafeAllowLargeClockSkew: true`; 120s stays the hard ceiling |
+| `claimValidators: {...}` | rename to `unsafeClaimValidators: {...}` |
+| `keys: { getVerificationKey }` (custom source) | `keys: unsafeCustomKeySource({ getVerificationKey })` |
+| `new SignJWT(typ, { maxLifetime })` or `EncryptJWT` above 30 days | add `unsafeAllowLongLifetime: true` |
+| `createRemoteJWKSet(url)` or `keys: { jwksUri }` | name `cacheTtlSeconds`, `cooldownSeconds` and `timeoutMs`; 2.x used 300, 30 and 5000 |
+| `cooldownSeconds: 0` | at least 1; 0 let every unknown `kid` trigger a fetch |
+| `staleWhileErrorSeconds` above 86400 | at most 86400 |
+| `refreshTokenProfile({...})` with no `revocation` | pass a store, or `unsafeNoRevocation: true` |
+| `unsafeAllowClaim("profile")` to get past one nested field | `unsafeAllowClaim("profile", "field")` waives only that field |
+
+The first four rows apply to both `defineProfile` and
+`defineDecryptionProfile`. Sources from `createLocalJWKSet` and
+`createRemoteJWKSet` need no wrapper. A single-argument `unsafeAllowClaim`
+still waives the whole claim, as before.
+
+Behaviour that changed without an API change:
+
+- **The stale-while-error window starts when the cached keys expire**, not
+  when they were fetched. In 2.x an endpoint sending `max-age=3600` or more
+  got no stale serving at all with the default 3600s window. Keys can now be
+  trusted for at most the cache lifetime plus the window.
+- **The payload scanner matches names by word.** `businessName`,
+  `classNumber` and `tokenizer` now pass; `apiKey`, `accesstoken` and
+  `passwordHash` are still refused. Waivers you added for the first kind can
+  go.
+- **`newRefreshToken()` caps lifetimes at 30 days**, down from 90, to match
+  `refreshTokenProfile`'s default `maxTokenAge`. A 90-day refresh token was
+  refused at day 30 anyway.
+- **`MemoryRevocationStore` revokes by subject and session too**:
+  `revokeSubject(sub, until)` and `revokeSession(sid, until)`. Revoking the
+  same `jti` twice keeps the later expiry instead of the last one written.
+
 # Migrating from 1.x to 2.0
 
 2.0 breaks two things on purpose: how legacy `RS*` algorithms are enabled, and
 the error classes. Each section says what to change.
 
-## Legacy algorithms are values you pass, not a switch you flip
+### Legacy algorithms are values you pass, not a switch you flip
 
 In 1.x, `enableLegacyRS256()` added `RS256` to a registry shared by the whole
 process. Every profile, `importKey` call and package in that process could
@@ -77,7 +119,7 @@ the process-wide side effect its doc comment warned about, go away:
 5. The access-token profile's own `algorithms` is unaffected unless it lists
    `"RS256"`; if it does, list `LEGACY_RS256` instead.
 
-## One error class: `JWTError` with a `code`
+### One error class: `JWTError` with a `code`
 
 The sixteen 1.x subclasses are gone. Every refusal is now a `JWTError`, and
 `error.code` says which one it was. The codes themselves are the strings 1.x

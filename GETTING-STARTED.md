@@ -183,10 +183,10 @@ const profile = defineProfile({
 
   // optional
   maxTokenLifetime: "1h",           // refuse an implausible declared exp-iat span
-  maxClockSkew: "5s",               // default 5s, capped at 120s
+  maxClockSkew: "5s",               // default 5s, capped at 30s
   subject: "user-42",               // pin the expected sub
   revocation: store,
-  claimValidators: {
+  unsafeClaimValidators: {         // your code in the accept path
     scope: (value) => {
       if (typeof value !== "string" || !value.includes("read")) {
         throw new Error("scope must include read");
@@ -243,7 +243,8 @@ Applied automatically, with no configuration:
 - `jti`: a unique UUID on every token, so revocation always has a key
 - `iat`: set at sign time
 - Lifetime cap: `.expiresIn()` above 1h throws `MAX_LIFETIME_EXCEEDED`. Raise
-  it with `new SignJWT("at+jwt", { maxLifetime: "24h" })`
+  it with `new SignJWT("at+jwt", { maxLifetime: "24h" })`, up to 30 days.
+  Past that it takes `unsafeAllowLongLifetime: true`
 - Payload hygiene: the payload is scanned before signing and refuses
   anything shaped like a password, card number, or PEM key
 
@@ -257,10 +258,13 @@ await new SignJWT("at+jwt")
   .sign(privateKey);                        // throws PAYLOAD_HYGIENE_VIOLATION
 ```
 
-For a false positive, allow that claim by name:
+Names are matched by word, so `businessName` does not read as `ssn` and
+`tokenizer` does not read as `token`. For a real false positive, waive that
+one claim, or one field inside it, by path. The error tells you the path:
 
 ```ts
 .unsafeAllowClaim("password_changed_at")
+.unsafeAllowClaim("profile", "passwordHint") // only this nested field
 ```
 
 ---
@@ -373,7 +377,7 @@ export const apiProfile = accessTokenProfile({
   issuer: "https://auth.example.com",
   audience: "https://api.example.com",        // the API
   algorithms: ["EdDSA"],
-  keys: { jwksUri: "https://auth.example.com/jwks" },
+  keys: { jwksUri: "https://auth.example.com/jwks", cacheTtlSeconds: 300, cooldownSeconds: 30, timeoutMs: 2000 },
 });
 
 export const refreshProfile = refreshTokenProfile({
@@ -381,7 +385,7 @@ export const refreshProfile = refreshTokenProfile({
   audience: "https://auth.example.com/token", // the auth server, never the API
   algorithms: ["EdDSA"],
   keys: publicKey,
-  revocation: store,                          // long-lived means revocable
+  revocation: store,                          // required; unsafeNoRevocation to opt out
 });
 ```
 
@@ -390,8 +394,8 @@ export const refreshProfile = refreshTokenProfile({
 | `typ` | `at+jwt` | `rt+jwt` |
 | audience | your API | your auth server's token endpoint |
 | default max age | 10m | 30d |
-| lifetime cap when signing | 1h | 90d |
-| revocation | optional | required in practice |
+| lifetime cap when signing | 1h | 30d |
+| revocation | optional | required |
 
 Issuing:
 
@@ -443,6 +447,17 @@ await jwtVerify(token, profile); // now throws JWT_REVOKED
 Entries are dropped once the token would have expired anyway, so the store
 does not grow without bound.
 
+To kill everything a user or a session holds, revoke by `sub` or `sid`.
+Tokens issued up to that second are revoked; tokens issued afterwards (the
+user logging back in) are not. `until` is how long the cut-off must last:
+now plus your longest `maxTokenAge` for those tokens.
+
+```ts
+const until = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // the refresh profile's 30d
+store.revokeSubject(payload.sub as string, until); // "log out everywhere"
+store.revokeSession(payload.sid as string, until); // one device
+```
+
 For a deployment, back it with Redis or your database:
 
 ```ts
@@ -458,8 +473,9 @@ class RedisRevocationStore implements RevocationStore {
 }
 ```
 
-The context also carries `sub`, `sid`, `exp` and `iat`, so "revoke every
-session for this user" needs no interface change.
+The context also carries `sub`, `sid`, `exp` and `iat`, so a shared store
+can do what `revokeSubject` and `revokeSession` do: keep a per-subject
+cut-off time and reject any token whose `iat` is at or before it.
 
 A store that throws fails closed: the token is rejected because you cannot
 confirm it is not revoked. A Redis outage is therefore an auth outage. The
@@ -482,31 +498,36 @@ const profile = defineProfile({
   issuer: "https://auth.example.com",
   audience: "https://api.example.com",
   algorithms: ["EdDSA"],
-  keys: { jwksUri: "https://auth.example.com/.well-known/jwks.json" },
+  keys: {
+    jwksUri: "https://auth.example.com/.well-known/jwks.json",
+    cacheTtlSeconds: 300,          // no Cache-Control? trust fetched keys this long (0-86400)
+    cooldownSeconds: 30,           // at most one fetch per 30s, whatever kids strangers send (1-86400)
+    timeoutMs: 2000,               // verification waits this long on a cold cache
+    staleWhileErrorSeconds: 3600,  // optional, default 3600, at most 86400
+  },
   maxTokenAge: "15m",
 });
 ```
 
-Caching, `Cache-Control` handling, a fetch cooldown, a size cap and a
-timeout apply by default. HTTPS is mandatory, redirects are never followed,
-and symmetric keys are refused: a JWKS endpoint is public, so an `oct` key
-published there is one any reader could mint with.
+The first three have no defaults, because only you know them.
+`cacheTtlSeconds` is how long a key your issuer removed stays trusted here
+(a `Cache-Control: max-age` on the response wins, capped at a day).
+`cooldownSeconds` is how often a token with a made-up `kid` can make you
+call your issuer, and it has to be shorter than your rotation overlap or a
+fresh key is refused until it passes. `timeoutMs` is part of your request
+latency budget.
 
-The knobs and their defaults:
+HTTPS is mandatory, redirects are never followed, the response is read under
+a 1 MiB budget, and symmetric keys are refused: a JWKS endpoint is public, so
+an `oct` key published there is one any reader could mint with.
 
-```ts
-keys: {
-  jwksUri: "https://auth.example.com/.well-known/jwks.json",
-  cacheTtlSeconds: 300,
-  cooldownSeconds: 30,
-  timeoutMs: 5000,
-  staleWhileErrorSeconds: 3600,  // how long known-good keys serve during an outage
-}
-```
-
-`staleWhileErrorSeconds` is bounded deliberately. A key rotated out because
-it was compromised must not stay trusted for as long as an attacker can keep
-your JWKS endpoint unreachable. Set it to `0` to disable stale serving.
+`staleWhileErrorSeconds` starts counting when the cached keys' lifetime
+ends, and only while the endpoint is failing. Then verification fails
+closed. It is bounded deliberately: a key rotated out because it was
+compromised must not stay trusted for as long as an attacker can keep your
+JWKS endpoint unreachable. The longest any fetched key can be trusted is the
+cache lifetime plus this window, two days at the outside. Set it to `0` to
+disable stale serving.
 
 Publishing the JWKS from the signing side:
 
@@ -542,7 +563,7 @@ Since you cannot issue with a `kid`, plan around it. In order of preference:
    const profile = defineProfile({
      typ: "at+jwt", issuer: ISSUER, audience: AUDIENCE,
      algorithms: ["EdDSA", "ES256"],       // both, only during the overlap
-     keys: { jwksUri: "https://auth.example.com/.well-known/jwks.json" },
+     keys: { jwksUri: "https://auth.example.com/.well-known/jwks.json", cacheTtlSeconds: 300, cooldownSeconds: 30, timeoutMs: 2000 },
      maxTokenAge: "15m",
    });
    ```
@@ -661,8 +682,7 @@ Step 3 waits one token lifetime.
 - [ ] A rotation plan that accounts for the `kid` constraint in
       [§10](#10-distributing-keys-in-production)
 - [ ] `401 invalid_token` for every rejection; codes go to logs only
-- [ ] CI greps for `unsafeAllow`, `unsafeDecode` and
-      `unsafeFailOpenOnRevocationError`
+- [ ] CI greps for `unsafe`: every weakening Lacewing allows is spelled with it
 
 ---
 
