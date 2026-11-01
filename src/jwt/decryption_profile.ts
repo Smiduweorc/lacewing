@@ -2,73 +2,41 @@
  * Decryption profiles - the JWE analogue of `defineProfile`. A profile is the
  * only argument shape `jwtDecrypt` accepts, which makes `typ`, issuer,
  * audience, the two algorithm allowlists, and the decrypting key structurally
- * mandatory. The key belongs to the profile, which belongs to an issuer.
+ * mandatory. The key belongs to the profile, which belongs to an issuer. Only
+ * `defineDecryptionProfile` mints one; `jwtDecrypt` refuses anything else.
  */
 
-import { parseDuration } from "../lib/duration.js";
+import { mintedKind } from "../lib/minted.js";
 import {
 	toValidContentEncryptionAlg,
 	toValidKeyManagementAlg,
 } from "../lib/jwe_algorithms.js";
+import { buildPolicy, type PolicyOptions } from "./policy.js";
 import {
 	isLacewingEncryptionKey,
-	toSeconds,
 	type ExpectedDecryptionProfile,
 	type LacewingEncryptionKey,
-	type RevocationStore,
-	type ValidateClaim,
 } from "../types.js";
 
-const DEFAULT_CLOCK_SKEW_SECONDS = 5;
-const MAX_CLOCK_SKEW_SECONDS = 30;
-const UNSAFE_MAX_CLOCK_SKEW_SECONDS = 120;
-const MAX_TOKEN_AGE_SECONDS = 30 * 24 * 60 * 60;
-
-export interface DecryptionProfileOptions {
-	/** Expected token type, e.g. `"at+jwt"`. */
-	typ: string;
-	/** The one issuer this profile trusts. */
-	issuer: string;
-	/** The audience value that must appear in the token. */
-	audience: string;
+export interface DecryptionProfileOptions extends PolicyOptions {
 	/** Explicit key-management (`alg`) allowlist - the header never decides. */
 	keyManagementAlgorithms: readonly string[];
 	/** Explicit content-encryption (`enc`) allowlist. */
 	contentEncryptionAlgorithms: readonly string[];
 	/** The private/secret key that decrypts (bound to one key-management alg). */
 	key: LacewingEncryptionKey;
-	/** Maximum accepted token age (`now - iat`), independent of `exp`. */
-	maxTokenAge: number | string;
-	/** Ugly on purpose: allow `maxTokenAge` above 30 days. */
-	unsafeAllowLongTokenAge?: boolean;
-	/** Optional cap on the token's declared lifetime (`exp - iat`). */
-	maxTokenLifetime?: number | string;
-	/** Allowed clock skew, default 5s, capped at 30s (120s with `unsafeAllowLargeClockSkew`). */
-	maxClockSkew?: number | string;
-	/** Ugly on purpose: allow `maxClockSkew` above 30s, up to 120s. */
-	unsafeAllowLargeClockSkew?: boolean;
-	revocation?: RevocationStore;
-	/**
-	 * Ugly on purpose: extra per-claim predicates, run after all standard
-	 * checks. Arbitrary code in the accept path - you own its correctness.
-	 */
-	unsafeClaimValidators?: Record<string, ValidateClaim>;
-	subject?: string;
-	unsafeFailOpenOnRevocationError?: boolean;
 }
 
-function requireNonEmptyString(value: unknown, field: string): string {
-	if (typeof value !== "string" || value.length === 0) {
-		throw new TypeError(`Decryption profile "${field}" must be a non-empty string`);
-	}
-	return value;
+const decryptionProfiles = mintedKind<ExpectedDecryptionProfile>();
+
+/** True only for profiles `defineDecryptionProfile` built. */
+export function isDecryptionProfile(value: unknown): value is ExpectedDecryptionProfile {
+	return decryptionProfiles.is(value);
 }
 
 /** Build the security boundary that `jwtDecrypt` enforces. */
 export function defineDecryptionProfile(options: DecryptionProfileOptions): ExpectedDecryptionProfile {
-	const typ = requireNonEmptyString(options.typ, "typ");
-	const iss = requireNonEmptyString(options.issuer, "issuer");
-	const aud = requireNonEmptyString(options.audience, "audience");
+	const policy = buildPolicy(options, "Decryption profile");
 
 	if (!Array.isArray(options.keyManagementAlgorithms) || options.keyManagementAlgorithms.length === 0) {
 		throw new TypeError("Decryption profile requires a non-empty keyManagementAlgorithms allowlist");
@@ -89,52 +57,10 @@ export function defineDecryptionProfile(options: DecryptionProfileOptions): Expe
 		throw new TypeError("The profile key's algorithm is not in the keyManagementAlgorithms allowlist");
 	}
 
-	const maxTokenAge = parseDuration(options.maxTokenAge);
-	if (maxTokenAge < 1) throw new TypeError("Decryption profile maxTokenAge must be at least one second");
-	const maxClockSkew = parseDuration(options.maxClockSkew ?? DEFAULT_CLOCK_SKEW_SECONDS);
-	if (maxTokenAge > MAX_TOKEN_AGE_SECONDS && options.unsafeAllowLongTokenAge !== true) {
-		throw new TypeError(
-			"Decryption profile maxTokenAge is capped at 30 days - set unsafeAllowLongTokenAge to go beyond"
-		);
-	}
-	const skewCap =
-		options.unsafeAllowLargeClockSkew === true ? UNSAFE_MAX_CLOCK_SKEW_SECONDS : MAX_CLOCK_SKEW_SECONDS;
-	if (maxClockSkew > skewCap) {
-		throw new TypeError(
-			skewCap === MAX_CLOCK_SKEW_SECONDS
-				? `Decryption profile maxClockSkew is capped at ${MAX_CLOCK_SKEW_SECONDS} seconds - set unsafeAllowLargeClockSkew to allow up to ${UNSAFE_MAX_CLOCK_SKEW_SECONDS}`
-				: `Decryption profile maxClockSkew is capped at ${UNSAFE_MAX_CLOCK_SKEW_SECONDS} seconds`
-		);
-	}
-	const maxTokenLifetime =
-		options.maxTokenLifetime === undefined ? undefined : parseDuration(options.maxTokenLifetime);
-	if (maxTokenLifetime !== undefined && maxTokenLifetime < 1) {
-		throw new TypeError("Decryption profile maxTokenLifetime must be at least one second");
-	}
-	if (options.revocation !== undefined && typeof options.revocation.isRevoked !== "function") {
-		throw new TypeError("Decryption profile revocation store must implement isRevoked()");
-	}
-	if (options.unsafeClaimValidators !== undefined) {
-		for (const [claim, validator] of Object.entries(options.unsafeClaimValidators)) {
-			if (typeof validator !== "function") throw new TypeError(`Claim validator for "${claim}" must be a function`);
-		}
-	}
-	if (options.subject !== undefined) requireNonEmptyString(options.subject, "subject");
-
-	const profile: ExpectedDecryptionProfile = {
-		typ,
-		iss,
-		aud,
+	return decryptionProfiles.mint({
+		...policy,
 		keyManagementAlgorithms,
 		contentEncryptionAlgorithms,
 		key: options.key,
-		maxTokenAge: toSeconds(maxTokenAge),
-		maxClockSkew: toSeconds(maxClockSkew),
-	};
-	if (maxTokenLifetime !== undefined) profile.maxTokenLifetime = toSeconds(maxTokenLifetime);
-	if (options.revocation !== undefined) profile.revocation = options.revocation;
-	if (options.unsafeClaimValidators !== undefined) profile.claimValidators = { ...options.unsafeClaimValidators };
-	if (options.subject !== undefined) profile.subject = options.subject;
-	if (options.unsafeFailOpenOnRevocationError === true) profile.unsafeFailOpenOnRevocationError = true;
-	return Object.freeze(profile);
+	});
 }

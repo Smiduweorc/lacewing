@@ -7,6 +7,9 @@
 // Claim registry: https://www.iana.org/assignments/jwt/jwt.xhtml
 
 import { JWTError } from "./util/errors.js";
+import { mintedKind } from "./lib/minted.js";
+import type { Clock } from "./util/clock.js";
+import type { OnEvent } from "./util/events.js";
 import type { AlgorithmInfo } from "./lib/algorithms.js";
 
 /**
@@ -87,26 +90,20 @@ export type LacewingKey<Alg extends string = string> = {
 	readonly key: unknown;
 };
 
+const signingKeys = mintedKind<LacewingKey>();
+
 /** Internal constructor - use `importKey` / `generateKeyPair` instead. */
 export function createLacewingKey<const Alg extends string>(
 	algorithm: Alg & ValidAlg,
 	keyType: "public" | "private" | "secret",
 	key: unknown
 ): LacewingKey<Alg> {
-	return Object.freeze({
-		__brand: "LacewingKey",
-		algorithm,
-		keyType,
-		key,
-	}) as LacewingKey<Alg>;
+	return signingKeys.mint({ __brand: "LacewingKey", algorithm, keyType, key }) as LacewingKey<Alg>;
 }
 
+/** True only for keys Lacewing minted; a look-alike object is not one. */
 export function isLacewingKey(value: unknown): value is LacewingKey {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		(value as { __brand?: unknown }).__brand === "LacewingKey"
-	);
+	return signingKeys.is(value);
 }
 
 export type StaticJWK = {
@@ -186,6 +183,23 @@ export interface ClaimsPolicy {
 	maxClockSkew: DurationSeconds;
 	subject?: string;
 	claimValidators?: Record<string, ValidateClaim>;
+	/** Clock in milliseconds; `Date.now` unless the profile was given one. */
+	now: Clock;
+}
+
+/**
+ * Everything a verification and a decryption profile share: the claims
+ * policy, the expected `typ`, and how revocation behaves.
+ */
+export interface TokenPolicy extends ClaimsPolicy {
+	typ: string;
+	revocation?: RevocationStore;
+	/**
+	 * Deliberately ugly escape hatch: when the revocation store errors,
+	 * accept the token anyway instead of failing closed (LW-rev.4).
+	 */
+	unsafeFailOpenOnRevocationError?: boolean;
+	onEvent?: OnEvent;
 }
 
 /**
@@ -201,13 +215,15 @@ export type LacewingEncryptionKey<Alg extends string = string> = {
 	readonly key: unknown;
 };
 
+const encryptionKeys = mintedKind<LacewingEncryptionKey>();
+
 /** Internal constructor - use `importEncryptionKey` / `generateEncryptionKeyPair`. */
 export function createLacewingEncryptionKey<const Alg extends string>(
 	algorithm: Alg & ValidAlg,
 	keyType: "public" | "private" | "secret",
 	key: unknown
 ): LacewingEncryptionKey<Alg> {
-	return Object.freeze({
+	return encryptionKeys.mint({
 		__brand: "LacewingEncryptionKey",
 		algorithm,
 		keyType,
@@ -215,12 +231,9 @@ export function createLacewingEncryptionKey<const Alg extends string>(
 	}) as LacewingEncryptionKey<Alg>;
 }
 
+/** True only for encryption keys Lacewing minted. */
 export function isLacewingEncryptionKey(value: unknown): value is LacewingEncryptionKey {
-	return (
-		typeof value === "object" &&
-		value !== null &&
-		(value as { __brand?: unknown }).__brand === "LacewingEncryptionKey"
-	);
+	return encryptionKeys.is(value);
 }
 
 /** A decrypted JWE's protected header (adds `enc` to the JWS header shape). */
@@ -247,39 +260,21 @@ export type DecryptedJwt = {
  * {@link ExpectedJwtProfile}. Built by `defineDecryptionProfile`, the only
  * argument shape `jwtDecrypt` accepts.
  */
-export interface ExpectedDecryptionProfile extends ClaimsPolicy {
-	typ: string;
+export interface ExpectedDecryptionProfile extends TokenPolicy {
 	/** Allowlist of key-management (`alg`) algorithms; the header never decides. */
 	keyManagementAlgorithms: readonly ValidAlg[];
 	/** Allowlist of content-encryption (`enc`) algorithms. */
 	contentEncryptionAlgorithms: readonly ValidAlg[];
 	/** The private/secret key that decrypts (scoped to this profile's issuer). */
 	key: LacewingEncryptionKey;
-	revocation?: RevocationStore;
-	unsafeFailOpenOnRevocationError?: boolean;
 }
 
 /**
  * The security boundary for verification (RFC 8725 §3.12).
  * Built by `defineProfile` - the only argument shape `jwtVerify` accepts.
  */
-export interface ExpectedJwtProfile {
-	typ: string;
-	iss: string;
-	aud: string; // The specific audience this API expects to be inside the token
+export interface ExpectedJwtProfile extends TokenPolicy {
 	/** The algorithm allowlist, resolved to Lacewing's own descriptors. */
 	alg: readonly AlgorithmInfo[];
 	keys: KeySource | LacewingKey;
-	maxTokenAge: DurationSeconds;
-	/** Optional cap on the token's declared span (`exp - iat`). */
-	maxTokenLifetime?: DurationSeconds;
-	maxClockSkew: DurationSeconds;
-	revocation?: RevocationStore;
-	claimValidators?: Record<string, ValidateClaim>;
-	subject?: string;
-	/**
-	 * Deliberately ugly escape hatch: when the revocation store errors,
-	 * accept the token anyway instead of failing closed (LW-rev.4).
-	 */
-	unsafeFailOpenOnRevocationError?: boolean;
 }

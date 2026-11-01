@@ -11,6 +11,7 @@
 import { CompactSign } from "jose";
 import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
+import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
 import { claimPathKey, scanPayloadForSensitiveData } from "../lib/payload_hygiene.js";
 import { isLacewingKey, type DurationSeconds, type LacewingKey } from "../types.js";
@@ -30,6 +31,8 @@ export interface SignJwtOptions {
 	maxLifetime?: number | string;
 	/** Ugly on purpose: allow `maxLifetime` above 30 days. */
 	unsafeAllowLongLifetime?: boolean;
+	/** Clock in milliseconds for `iat`/`nbf`/`exp`, default `Date.now`. */
+	now?: Clock;
 }
 
 /**
@@ -51,6 +54,7 @@ export interface SignJwtOptions {
 export class SignJWT {
 	readonly #typ: string;
 	readonly #maxLifetime: DurationSeconds;
+	readonly #now: Clock;
 	readonly #claims = new Map<string, unknown>();
 	readonly #allowedClaims = new Set<string>();
 	#iss?: string;
@@ -71,6 +75,7 @@ export class SignJWT {
 			);
 		}
 		this.#typ = typ;
+		this.#now = requireClock(options.now, "SignJWT");
 		this.#maxLifetime = parseDuration(options.maxLifetime ?? DEFAULT_MAX_LIFETIME_SECONDS);
 		if (this.#maxLifetime > LONG_LIFETIME_SECONDS && options.unsafeAllowLongLifetime !== true) {
 			throw new TypeError(
@@ -211,7 +216,16 @@ export class SignJWT {
 			);
 		}
 
-		const now = Math.floor(Date.now() / 1000);
+		if (
+			this.#notBefore !== undefined &&
+			this.#expiresIn !== undefined &&
+			this.#notBefore >= this.#expiresIn
+		) {
+			// nbf at or after exp makes a token that can never be valid.
+			throw new TypeError("notBefore must be earlier than expiresIn");
+		}
+
+		const now = nowSeconds(this.#now);
 		const payload: Record<string, unknown> = Object.fromEntries(this.#claims);
 		if (this.#iss !== undefined) payload.iss = this.#iss;
 		if (this.#sub !== undefined) payload.sub = this.#sub;

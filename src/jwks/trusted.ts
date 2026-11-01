@@ -5,25 +5,26 @@
  * key verifies a token, so it should never be anonymous code.
  */
 
+import { mintedKind } from "../lib/minted.js";
 import type { KeySource } from "../types.js";
 
-const vouched = new WeakSet<KeySource>();
+const vouched = mintedKind<KeySource>();
 
-/** Internal: mark a key source as built (or explicitly accepted) by Lacewing. */
-export function vouchForKeySource<T extends KeySource>(source: T): T {
-	vouched.add(source);
-	return source;
+/** Internal: wrap a key source Lacewing built (or was explicitly told to accept). */
+export function vouchForKeySource(source: KeySource): KeySource {
+	return vouched.mint({ getVerificationKey: source.getVerificationKey.bind(source) });
 }
 
-export function isVouchedKeySource(source: KeySource): boolean {
-	return vouched.has(source);
+export function isVouchedKeySource(source: unknown): source is KeySource {
+	return vouched.is(source);
 }
 
 /**
  * Ugly on purpose: accept a custom {@link KeySource}. Its `getVerificationKey`
  * is the issuer-to-key binding (RFC 8725 §3.8); you own its correctness.
+ * Returns a wrapper; pass that, not the original, as `keys`.
  */
-export function unsafeCustomKeySource<T extends KeySource>(source: T): T {
+export function unsafeCustomKeySource(source: KeySource): KeySource {
 	if (typeof source?.getVerificationKey !== "function") {
 		throw new TypeError("unsafeCustomKeySource() needs an object with getVerificationKey()");
 	}

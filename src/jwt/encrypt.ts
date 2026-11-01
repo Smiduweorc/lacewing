@@ -12,6 +12,7 @@
 import { CompactEncrypt } from "jose";
 import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
+import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
 import { getContentEncryptionProperties, getKeyManagementProperties } from "../lib/jwe_algorithms.js";
 import { isLacewingEncryptionKey, type DurationSeconds, type LacewingEncryptionKey } from "../types.js";
@@ -28,11 +29,14 @@ export interface EncryptJwtOptions {
 	unsafeAllowLongLifetime?: boolean;
 	/** Content-encryption algorithm (`enc`). Default `A256GCM`. */
 	contentEncryption?: string;
+	/** Clock in milliseconds for `iat`/`nbf`/`exp`, default `Date.now`. */
+	now?: Clock;
 }
 
 export class EncryptJWT {
 	readonly #typ: string;
 	readonly #maxLifetime: DurationSeconds;
+	readonly #now: Clock;
 	readonly #enc: string;
 	readonly #claims = new Map<string, unknown>();
 	#iss?: string;
@@ -50,6 +54,7 @@ export class EncryptJWT {
 			throw new TypeError("EncryptJWT requires an explicit token typ, e.g. new EncryptJWT(\"at+jwt\")");
 		}
 		this.#typ = typ;
+		this.#now = requireClock(options.now, "EncryptJWT");
 		this.#maxLifetime = parseDuration(options.maxLifetime ?? DEFAULT_MAX_LIFETIME_SECONDS);
 		if (this.#maxLifetime > LONG_LIFETIME_SECONDS && options.unsafeAllowLongLifetime !== true) {
 			throw new TypeError(
@@ -174,7 +179,16 @@ export class EncryptJWT {
 			);
 		}
 
-		const now = Math.floor(Date.now() / 1000);
+		if (
+			this.#notBefore !== undefined &&
+			this.#expiresIn !== undefined &&
+			this.#notBefore >= this.#expiresIn
+		) {
+			// nbf at or after exp makes a token that can never be valid.
+			throw new TypeError("notBefore must be earlier than expiresIn");
+		}
+
+		const now = nowSeconds(this.#now);
 		const payload: Record<string, unknown> = Object.fromEntries(this.#claims);
 		if (this.#iss !== undefined) payload.iss = this.#iss;
 		if (this.#sub !== undefined) payload.sub = this.#sub;

@@ -165,7 +165,8 @@ test("oversized string claims are rejected", async () => {
 // --- declared lifetime vs current age (issue #14) ------------------------
 
 test("[LW-life.2] maxTokenAge bounds usable age, not the declared lifetime", async () => {
-	const now = Math.floor(Date.now() / 1000);
+	const now = 1_767_225_600;
+	let clockMs = now * 1000;
 	const profile = defineProfile({
 		typ: "at+jwt",
 		issuer: "https://auth.example.com",
@@ -173,6 +174,7 @@ test("[LW-life.2] maxTokenAge bounds usable age, not the declared lifetime", asy
 		algorithms: ["HS256"],
 		keys: generateSecret("HS256"),
 		maxTokenAge: "10m",
+		now: () => clockMs,
 	});
 	// A token minted now but declaring a decade: accepted while young...
 	const decade = {
@@ -181,13 +183,14 @@ test("[LW-life.2] maxTokenAge bounds usable age, not the declared lifetime", asy
 		iat: now,
 		exp: now + 10 * 365 * 86400,
 	};
-	await assert.doesNotReject(validateClaims(decade, profile, now));
+	await assert.doesNotReject(validateClaims(decade, profile));
 	// ...and refused once it is older than the age window (plus default skew).
-	await assert.rejects(validateClaims(decade, profile, now + 700), refusal("JWT_EXPIRED"));
+	clockMs = (now + 700) * 1000;
+	await assert.rejects(validateClaims(decade, profile), refusal("JWT_EXPIRED"));
 });
 
 test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright", async () => {
-	const now = Math.floor(Date.now() / 1000);
+	const now = 1_767_225_600;
 	const base = {
 		typ: "at+jwt",
 		issuer: "https://auth.example.com",
@@ -195,6 +198,7 @@ test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright
 		algorithms: ["HS256"],
 		keys: generateSecret("HS256"),
 		maxTokenAge: "10m",
+		now: () => now * 1000,
 	} as const;
 	const profile = defineProfile({ ...base, maxTokenLifetime: "1h" });
 	const payload = (lifetime: number): Record<string, unknown> => ({
@@ -204,10 +208,10 @@ test("[LW-life.2] maxTokenLifetime refuses an implausible declared span outright
 		exp: now + lifetime,
 	});
 	// Within the declared cap: fine.
-	await assert.doesNotReject(validateClaims(payload(1800), profile, now));
+	await assert.doesNotReject(validateClaims(payload(1800), profile));
 	// A decade-long span is a misissuance signal, refused on sight.
-	await assert.rejects(validateClaims(payload(10 * 365 * 86400), profile, now), refusal("JWT_CLAIM_VALIDATION_FAILED"));
+	await assert.rejects(validateClaims(payload(10 * 365 * 86400), profile), refusal("JWT_CLAIM_VALIDATION_FAILED"));
 	// Opt-in: without it, the same token is only bounded by maxTokenAge.
-	await assert.doesNotReject(validateClaims(payload(10 * 365 * 86400), defineProfile(base), now));
+	await assert.doesNotReject(validateClaims(payload(10 * 365 * 86400), defineProfile(base)));
 	assert.throws(() => defineProfile({ ...base, maxTokenLifetime: 0 }), TypeError);
 });

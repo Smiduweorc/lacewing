@@ -12,6 +12,7 @@
  * database row with an expiry column).
  */
 
+import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import type { RevocationStore, TokenRevocationContext } from "../types.js";
 
 const SWEEP_INTERVAL_OPS = 256;
@@ -37,12 +38,22 @@ function requireId(value: unknown, method: string, claim: string): string {
 	return value;
 }
 
+export interface MemoryRevocationStoreOptions {
+	/** Clock in milliseconds, default `Date.now`. Give it the profile's clock. */
+	now?: Clock;
+}
+
 export class MemoryRevocationStore implements RevocationStore {
+	readonly #now: Clock;
 	/** jti -> token expiry (unix seconds). */
 	readonly #tokens = new Map<string, number>();
 	readonly #subjects = new Map<string, CutOff>();
 	readonly #sessions = new Map<string, CutOff>();
 	#opsSinceSweep = 0;
+
+	constructor(options: MemoryRevocationStoreOptions = {}) {
+		this.#now = requireClock(options.now, "MemoryRevocationStore");
+	}
 
 	/**
 	 * Revoke one token by its `jti`. `expiresAt` is the token's `exp` (unix
@@ -126,7 +137,7 @@ export class MemoryRevocationStore implements RevocationStore {
 	}
 
 	#nowSeconds(): number {
-		return Math.floor(Date.now() / 1000);
+		return nowSeconds(this.#now);
 	}
 
 	#maybeSweep(): void {

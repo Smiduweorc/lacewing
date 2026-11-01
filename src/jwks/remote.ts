@@ -15,6 +15,8 @@
 import { JWTError } from "../util/errors.js";
 import { resolveFromJwks, validateJwksShape } from "./local.js";
 import { vouchForKeySource } from "./trusted.js";
+import { requireClock, type Clock } from "../util/clock.js";
+import { emit, requireOnEvent, type OnEvent } from "../util/events.js";
 import type { AlgorithmInfo } from "../lib/algorithms.js";
 import type { JwtHeader, KeySource, ResolvedVerificationKey, StaticJWK } from "../types.js";
 
@@ -61,6 +63,14 @@ export interface RemoteJWKSetOptions {
 	 * global `fetch` becomes a `JWKS_FETCH_FAILED` error.
 	 */
 	fetch?: typeof fetch;
+	/**
+	 * Receives `jwks-refresh-failed` when a fetch fails and
+	 * `jwks-stale-serving` on every verification that uses keys past their
+	 * cache lifetime. Whatever it throws is ignored.
+	 */
+	onEvent?: OnEvent;
+	/** Clock in milliseconds, default `Date.now`. */
+	now?: Clock;
 }
 
 function cacheTtlFrom(response: Response, fallbackSeconds: number): number {
@@ -129,6 +139,9 @@ export function createRemoteJWKSet(
 		throw new TypeError("createRemoteJWKSet needs cacheTtlSeconds, cooldownSeconds and timeoutMs");
 	}
 	const callerFetch = options.fetch;
+	const clock = requireClock(options.now, "createRemoteJWKSet");
+	const onEvent = requireOnEvent(options.onEvent, "createRemoteJWKSet");
+	const href = jwksUrl.href;
 	const fallbackTtl = numberInRange(options.cacheTtlSeconds, 0, MAX_CACHE_TTL_SECONDS, "cacheTtlSeconds", "seconds");
 	const cooldownMs =
 		numberInRange(options.cooldownSeconds, 1, MAX_COOLDOWN_SECONDS, "cooldownSeconds", "seconds") * 1000;
@@ -148,7 +161,7 @@ export function createRemoteJWKSet(
 	let inflight: Promise<void> | undefined;
 
 	async function fetchJwks(): Promise<void> {
-		lastAttemptMs = Date.now();
+		lastAttemptMs = clock();
 		const init: RequestInit = {
 			redirect: "error",
 			headers: { accept: "application/jwk-set+json, application/json" },
@@ -192,14 +205,20 @@ export function createRemoteJWKSet(
 			);
 		}
 		cachedKeys = keys;
-		expiresAtMs = Date.now() + cacheTtlFrom(response, fallbackTtl) * 1000;
+		expiresAtMs = clock() + cacheTtlFrom(response, fallbackTtl) * 1000;
 	}
 
 	function refresh(): Promise<void> {
 		// Concurrent verifications share one fetch.
-		inflight ??= fetchJwks().finally(() => {
-			inflight = undefined;
-		});
+		inflight ??= fetchJwks()
+			.catch((cause: unknown) => {
+				// Once per failed fetch, however many verifications shared it.
+				emit(onEvent, { type: "jwks-refresh-failed", url: href, cause });
+				throw cause;
+			})
+			.finally(() => {
+				inflight = undefined;
+			});
 		return inflight;
 	}
 
@@ -210,18 +229,26 @@ export function createRemoteJWKSet(
 	 * that `staleWhileErrorSeconds: 0` disables stale serving outright.
 	 */
 	function staleServable(): boolean {
-		return cachedKeys !== undefined && Date.now() - expiresAtMs < staleWhileErrorMs;
+		return cachedKeys !== undefined && clock() - expiresAtMs < staleWhileErrorMs;
+	}
+
+	function servingStale(): void {
+		emit(onEvent, {
+			type: "jwks-stale-serving",
+			url: href,
+			staleForSeconds: Math.floor((clock() - expiresAtMs) / 1000),
+		});
 	}
 
 	async function ensureFresh(): Promise<void> {
-		const now = Date.now();
+		const now = clock();
 		if (cachedKeys !== undefined && now < expiresAtMs) {
 			return;
 		}
 		if (now - lastAttemptMs < cooldownMs && inflight === undefined) {
 			// In cooldown: serve stale keys if they are still inside the
 			// stale-while-error window, otherwise fail closed.
-			if (staleServable()) return;
+			if (staleServable()) return servingStale();
 			throw new JWTError(
 				"JWKS_FETCH_FAILED",
 				cachedKeys === undefined
@@ -236,6 +263,7 @@ export function createRemoteJWKSet(
 			// verification immediately - but only for a bounded window, so
 			// rotated-out keys cannot stay trusted indefinitely (LW-jwks.2).
 			if (!staleServable()) throw error;
+			servingStale();
 		}
 	}
 
@@ -255,7 +283,7 @@ export function createRemoteJWKSet(
 				const canRetry =
 					error instanceof JWTError &&
 					error.code === "JWKS_NO_MATCHING_KEY" &&
-					Date.now() - lastAttemptMs >= cooldownMs;
+					clock() - lastAttemptMs >= cooldownMs;
 				if (!canRetry) throw error;
 				await refresh();
 				return resolveFromJwks(cachedKeys as StaticJWK[], header, allowedAlgorithms, {

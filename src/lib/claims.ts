@@ -7,6 +7,7 @@
  */
 
 import { JWTError } from "../util/errors.js";
+import { nowSeconds as readSeconds } from "../util/clock.js";
 import type { ClaimsPolicy } from "../types.js";
 
 const MAX_STRING_CLAIM_LENGTH = 1024;
@@ -61,14 +62,14 @@ function audienceMatches(aud: unknown, expected: string): boolean {
 export type { ValidateClaim } from "../types.js";
 
 /**
- * Validate a decoded payload against a profile. Only called after the
- * signature has been verified. `nowSeconds` is injectable for tests.
+ * Validate a decoded payload against a profile, at the profile's clock read
+ * once. Only called after the signature has been verified.
  */
 export async function validateClaims(
 	payload: Record<string, unknown>,
-	profile: ClaimsPolicy,
-	nowSeconds: number = Math.floor(Date.now() / 1000)
+	profile: ClaimsPolicy
 ): Promise<void> {
+	const nowSeconds = readSeconds(profile.now);
 	const skew = profile.maxClockSkew;
 
 	// iss - must exactly match the trusted issuer (§3.8).

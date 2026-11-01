@@ -58,7 +58,7 @@ test("[8725-3.2.3] a hand-built descriptor in the allowlist is refused", () => {
 	assert.throws(() => defineProfile({ ...base(), algorithms: ["EdDSA", forged] }), refusal("ALGORITHM_NOT_ALLOWED"));
 });
 
-test("[8725-3.2.3] a hand-built profile carrying a forged descriptor cannot verify anything", async () => {
+test("[8725-3.2.3] a hand-built or spread profile cannot verify anything, forged descriptor or not", async () => {
 	const secret = generateSecret("HS256");
 	const token = await new SignJWT("at+jwt")
 		.issuer("https://auth.example.com")
@@ -69,7 +69,9 @@ test("[8725-3.2.3] a hand-built profile carrying a forged descriptor cannot veri
 	await assert.doesNotReject(jwtVerify(token, real));
 	const forged = Object.freeze({ name: "HS256", kty: "oct", minKeyBits: 8 } as const);
 	const handBuilt: ExpectedJwtProfile = { ...real, alg: [forged] };
-	await assert.rejects(jwtVerify(token, handBuilt), refusal("ALGORITHM_NOT_ALLOWED"));
+	await assert.rejects(jwtVerify(token, handBuilt), TypeError);
+	// A copy with nothing changed is refused too: it never went through defineProfile.
+	await assert.rejects(jwtVerify(token, { ...real }), TypeError);
 });
 
 test("clock skew has a sane default and a hard cap", () => {
