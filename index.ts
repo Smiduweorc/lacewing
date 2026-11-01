@@ -53,6 +53,7 @@ export { exportKeyJWK, exportKeyPEM } from "./src/key/export.js";
 // JWKS key sources
 export { createLocalJWKSet } from "./src/jwks/local.js";
 export { createRemoteJWKSet, type RemoteJWKSetOptions } from "./src/jwks/remote.js";
+export { unsafeCustomKeySource } from "./src/jwks/trusted.js";
 
 // Revocation
 export { buildRevocationContext } from "./src/revocation/store.js";

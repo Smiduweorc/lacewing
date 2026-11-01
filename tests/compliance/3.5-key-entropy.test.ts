@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { importKey, generateSecret, defineProfile, jwtVerify } from "../../index.js";
+import { importKey, generateSecret, defineProfile, jwtVerify, unsafeCustomKeySource } from "../../index.js";
 import { craftHmacToken, refusal } from "../helpers.js";
 
 test("[8725-3.5.1] HMAC secrets below the algorithm's minimum size are rejected at import", async () => {
@@ -31,7 +31,7 @@ test("[8725-3.5.2] a custom key source cannot hand back a weak HMAC secret", asy
 		issuer: "https://auth.example.com",
 		audience: "https://api.example.com",
 		algorithms: ["HS256"],
-		keys: { getVerificationKey: async () => ({ alg: "HS256", key: weak }) } as never,
+		keys: unsafeCustomKeySource({ getVerificationKey: async () => ({ alg: "HS256", key: weak }) } as never),
 		maxTokenAge: "15m",
 	});
 	await assert.rejects(jwtVerify(token, profile), refusal("ENTROPY_CHECK_FAILED"));

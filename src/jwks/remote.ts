@@ -14,28 +14,44 @@
 
 import { JWTError } from "../util/errors.js";
 import { resolveFromJwks, validateJwksShape } from "./local.js";
+import { vouchForKeySource } from "./trusted.js";
 import type { AlgorithmInfo } from "../lib/algorithms.js";
 import type { JwtHeader, KeySource, ResolvedVerificationKey, StaticJWK } from "../types.js";
 
-const DEFAULT_CACHE_TTL_SECONDS = 300;
-const DEFAULT_COOLDOWN_SECONDS = 30;
-const DEFAULT_TIMEOUT_MS = 5000;
 const DEFAULT_STALE_WHILE_ERROR_SECONDS = 3600;
 const MAX_CACHE_TTL_SECONDS = 86400;
+const MAX_COOLDOWN_SECONDS = 86400;
+const MAX_STALE_WHILE_ERROR_SECONDS = 86400;
 const MAX_RESPONSE_BYTES = 1_048_576;
 
 export interface RemoteJWKSetOptions {
-	/** Cache lifetime when the response has no usable Cache-Control (default 300s). */
-	cacheTtlSeconds?: number;
-	/** Minimum interval between fetch attempts (default 30s). */
-	cooldownSeconds?: number;
-	/** Fetch timeout (default 5000ms). */
-	timeoutMs?: number;
 	/**
-	 * How long previously-good keys may keep serving once the endpoint starts
-	 * failing (default 3600s). Bounded on purpose: a key rotated out *because
-	 * it was compromised* must not stay trusted for as long as an attacker can
-	 * keep the endpoint unreachable. `0` disables stale serving entirely.
+	 * How long fetched keys are trusted when the response sends no
+	 * `Cache-Control: max-age`, in seconds, 0 to 86400. This is how long a key
+	 * your issuer removed from the set stays trusted here: pick it from how
+	 * fast you need a rotation to take effect, not from how often you want to
+	 * fetch. A `max-age` on the response wins, capped at 86400.
+	 */
+	cacheTtlSeconds: number;
+	/**
+	 * Minimum gap between fetch attempts, in seconds, 1 to 86400. A token with
+	 * an unknown `kid` triggers a refetch, so this is how often a stranger can
+	 * make you call your issuer. Shorter than your issuer's rotation overlap,
+	 * or a freshly rotated key is refused until the cooldown ends.
+	 */
+	cooldownSeconds: number;
+	/**
+	 * How long one fetch may take before it is abandoned, in milliseconds.
+	 * Verification waits this long on a cold or rotating cache, so it is
+	 * part of your request latency budget.
+	 */
+	timeoutMs: number;
+	/**
+	 * How long the last good keys keep serving after their cache lifetime
+	 * ends while the endpoint is failing, in seconds (default 3600, at most
+	 * 86400). Bounded on purpose: a key rotated out *because it was
+	 * compromised* must not stay trusted for as long as an attacker can keep
+	 * the endpoint unreachable. `0` disables stale serving entirely.
 	 */
 	staleWhileErrorSeconds?: number;
 	/**
@@ -54,10 +70,9 @@ function cacheTtlFrom(response: Response, fallbackSeconds: number): number {
 	return Math.min(Math.max(ttl, 0), MAX_CACHE_TTL_SECONDS);
 }
 
-function nonNegativeSeconds(value: number | undefined, fallback: number, field: string): number {
-	if (value === undefined) return fallback;
-	if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-		throw new TypeError(`JWKS ${field} must be a non-negative number of seconds`);
+function numberInRange(value: unknown, min: number, max: number, field: string, unit: string): number {
+	if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+		throw new TypeError(`JWKS ${field} is required: a number of ${unit} from ${min} to ${max}`);
 	}
 	return value;
 }
@@ -104,27 +119,32 @@ async function readCappedText(response: Response, maxBytes: number): Promise<str
 /** Create a {@link KeySource} that fetches and caches a remote JWKS. */
 export function createRemoteJWKSet(
 	url: URL | string,
-	options: RemoteJWKSetOptions = {}
+	options: RemoteJWKSetOptions
 ): KeySource {
 	const jwksUrl = new URL(url);
 	if (jwksUrl.protocol !== "https:") {
 		throw new TypeError("JWKS URLs must use https");
 	}
+	if (typeof options !== "object" || options === null) {
+		throw new TypeError("createRemoteJWKSet needs cacheTtlSeconds, cooldownSeconds and timeoutMs");
+	}
 	const callerFetch = options.fetch;
-	const fallbackTtl = options.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS;
-	const cooldownMs = (options.cooldownSeconds ?? DEFAULT_COOLDOWN_SECONDS) * 1000;
-	const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const fallbackTtl = numberInRange(options.cacheTtlSeconds, 0, MAX_CACHE_TTL_SECONDS, "cacheTtlSeconds", "seconds");
+	const cooldownMs =
+		numberInRange(options.cooldownSeconds, 1, MAX_COOLDOWN_SECONDS, "cooldownSeconds", "seconds") * 1000;
+	const timeoutMs = numberInRange(options.timeoutMs, 1, 2 ** 31 - 1, "timeoutMs", "milliseconds");
 	const staleWhileErrorMs =
-		nonNegativeSeconds(
-			options.staleWhileErrorSeconds,
-			DEFAULT_STALE_WHILE_ERROR_SECONDS,
-			"staleWhileErrorSeconds"
+		numberInRange(
+			options.staleWhileErrorSeconds ?? DEFAULT_STALE_WHILE_ERROR_SECONDS,
+			0,
+			MAX_STALE_WHILE_ERROR_SECONDS,
+			"staleWhileErrorSeconds",
+			"seconds"
 		) * 1000;
 
 	let cachedKeys: StaticJWK[] | undefined;
 	let expiresAtMs = 0;
 	let lastAttemptMs = 0;
-	let lastSuccessMs = 0;
 	let inflight: Promise<void> | undefined;
 
 	async function fetchJwks(): Promise<void> {
@@ -172,8 +192,7 @@ export function createRemoteJWKSet(
 			);
 		}
 		cachedKeys = keys;
-		lastSuccessMs = Date.now();
-		expiresAtMs = lastSuccessMs + cacheTtlFrom(response, fallbackTtl) * 1000;
+		expiresAtMs = Date.now() + cacheTtlFrom(response, fallbackTtl) * 1000;
 	}
 
 	function refresh(): Promise<void> {
@@ -185,12 +204,13 @@ export function createRemoteJWKSet(
 	}
 
 	/**
-	 * May we still serve the last good keys, given how long ago they were good?
-	 * Strict `<` so that `staleWhileErrorSeconds: 0` disables stale serving
-	 * outright rather than granting the millisecond the keys were fetched in.
+	 * May we still serve the last good keys? The window opens when their cache
+	 * lifetime ends, not when they were fetched: measured from the fetch, a
+	 * `max-age` as long as the window left no stale time at all. Strict `<` so
+	 * that `staleWhileErrorSeconds: 0` disables stale serving outright.
 	 */
 	function staleServable(): boolean {
-		return cachedKeys !== undefined && Date.now() - lastSuccessMs < staleWhileErrorMs;
+		return cachedKeys !== undefined && Date.now() - expiresAtMs < staleWhileErrorMs;
 	}
 
 	async function ensureFresh(): Promise<void> {
@@ -219,7 +239,7 @@ export function createRemoteJWKSet(
 		}
 	}
 
-	return {
+	return vouchForKeySource({
 		async getVerificationKey(
 			header: JwtHeader,
 			allowedAlgorithms: readonly AlgorithmInfo[]
@@ -243,5 +263,5 @@ export function createRemoteJWKSet(
 				});
 			}
 		},
-	};
+	});
 }

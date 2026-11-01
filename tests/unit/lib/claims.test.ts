@@ -130,7 +130,7 @@ test("[8725-3.8.2] pinned subject must match", async () => {
 
 test("custom claim validators run and their failures are typed", async () => {
 	const profile = makeProfile({
-		claimValidators: {
+		unsafeClaimValidators: {
 			scope: (value: unknown) => {
 				if (value !== "read") throw new Error("bad scope");
 			},

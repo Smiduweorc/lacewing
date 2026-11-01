@@ -7,7 +7,7 @@
 	"token": "eyJhbGciOiJBMTI4S1ciLCJlbmMiOiJBMTI4Q0JDLUhTMjU2In0.6KB707dM9YTIgHtLvtgWQ8mKwboJW3of9locizkDTHzBC2IlrT1oOQ.AxY8DCtDaGlsbGljb3RoZQ.KDlTtXchhZTGufMYmOYGS4HffxPSUrfmqCHXaI9wOGY.U0m_YmjN04DJvceFICbCVQ",
 	"key": { "kty": "oct", "k": "GawgguFyGrWKav7AX4VKUg" },
 	"keyAlg": "A128KW",
-	"profile": { "typ": "JWT", "issuer": "joe", "audience": "https://api.example.com", "keyManagementAlgorithms": ["A128KW"], "contentEncryptionAlgorithms": ["A128CBC-HS256"], "maxTokenAge": "3650d" },
+	"profile": { "typ": "JWT", "issuer": "joe", "audience": "https://api.example.com", "keyManagementAlgorithms": ["A128KW"], "contentEncryptionAlgorithms": ["A128CBC-HS256"], "maxTokenAge": "15m" },
 	"relatedRequirements": ["LW-enc.3"],
 	"expect": { "outcome": "reject", "code": "JWT_INVALID" }
 }

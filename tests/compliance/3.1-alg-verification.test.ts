@@ -6,7 +6,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { defineProfile, jwtVerify, importKey, exportKeyJWK } from "../../index.js";
+import { defineProfile, jwtVerify, importKey, exportKeyJWK, unsafeCustomKeySource } from "../../index.js";
 import { craftHmacToken, refusal } from "../helpers.js";
 import { AUDIENCE, ISSUER, eddsa, es256, hmac, eddsaProfile, signValid } from "./_shared.js";
 import { createHmac } from "node:crypto";
@@ -89,7 +89,7 @@ test("[8725-3.1.2] a JWKS key with alg set serves only that algorithm under a mu
 });
 
 test("[8725-3.1.3] a custom key source that resolves a different algorithm than the header is refused", async () => {
-	const keys = { getVerificationKey: async () => ({ alg: "HS256", key: unboundSecret }) } as never;
+	const keys = unsafeCustomKeySource({ getVerificationKey: async () => ({ alg: "HS256", key: unboundSecret }) } as never);
 	const profile = hmacProfile(["HS256", "HS512"], keys);
 	await assert.doesNotReject(jwtVerify(unboundToken("HS256"), profile));
 	await assert.rejects(jwtVerify(unboundToken("HS512"), profile), refusal("ALGORITHM_NOT_ALLOWED"));

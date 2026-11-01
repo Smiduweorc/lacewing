@@ -121,12 +121,13 @@ export type StaticJWKS = {
 	keys: StaticJWK[];
 };
 
+/** A remote JWKS as profile config; the fields mean what `RemoteJWKSetOptions` says. */
 export type RemoteJWKS = {
 	jwksUri: string; // Forces them to supply the absolute URL to fetch from
-	cacheTtlSeconds?: number;
-	cooldownSeconds?: number;
-	timeoutMs?: number;
-	/** Bounded stale-serving window once the endpoint starts failing (default 1h). */
+	cacheTtlSeconds: number;
+	cooldownSeconds: number;
+	timeoutMs: number;
+	/** Stale-serving window after the cache lifetime ends (default 3600s, at most 86400s). */
 	staleWhileErrorSeconds?: number;
 };
 

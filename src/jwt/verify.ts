@@ -86,7 +86,11 @@ async function resolveKey(
  *   issuer: "https://auth.example.com",
  *   audience: "https://api.example.com",
  *   algorithms: ["EdDSA"],
- *   keys: createRemoteJWKSet("https://auth.example.com/jwks"),
+ *   keys: createRemoteJWKSet("https://auth.example.com/jwks", {
+ *     cacheTtlSeconds: 300,
+ *     cooldownSeconds: 30,
+ *     timeoutMs: 2000,
+ *   }),
  *   maxTokenAge: "10m",
  * });
  *

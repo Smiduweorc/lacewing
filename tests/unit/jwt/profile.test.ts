@@ -6,9 +6,12 @@ import { generateKeyPair, generateSecret } from "../../../src/key/generate.js";
 import { SignJWT } from "../../../src/jwt/sign.js";
 import { jwtVerify } from "../../../src/jwt/verify.js";
 import { LEGACY_RS256 } from "../../../src/legacy/rsa.js";
+import { unsafeCustomKeySource } from "../../../src/jwks/trusted.js";
+import { createLocalJWKSet } from "../../../src/jwks/local.js";
 import type { ExpectedJwtProfile } from "../../../src/types.js";
 
 const { publicKey, privateKey } = await generateKeyPair("EdDSA");
+const REMOTE = { cacheTtlSeconds: 300, cooldownSeconds: 30, timeoutMs: 5000 };
 
 function base(): Parameters<typeof defineProfile>[0] {
 	return {
@@ -72,7 +75,31 @@ test("[8725-3.2.3] a hand-built profile carrying a forged descriptor cannot veri
 test("clock skew has a sane default and a hard cap", () => {
 	assert.equal(defineProfile(base()).maxClockSkew, 5);
 	assert.equal(defineProfile({ ...base(), maxClockSkew: "30s" }).maxClockSkew, 30);
-	assert.throws(() => defineProfile({ ...base(), maxClockSkew: "10m" }), TypeError);
+	assert.throws(() => defineProfile({ ...base(), maxClockSkew: "31s" }), TypeError);
+	assert.equal(
+		defineProfile({ ...base(), maxClockSkew: "120s", unsafeAllowLargeClockSkew: true }).maxClockSkew,
+		120
+	);
+	assert.throws(
+		() => defineProfile({ ...base(), maxClockSkew: "10m", unsafeAllowLargeClockSkew: true }),
+		TypeError
+	);
+});
+
+test("maxTokenAge above 30 days needs unsafeAllowLongTokenAge", () => {
+	assert.equal(defineProfile({ ...base(), maxTokenAge: "30d" }).maxTokenAge, 30 * 86400);
+	assert.throws(() => defineProfile({ ...base(), maxTokenAge: "3650d" }), TypeError);
+	assert.equal(
+		defineProfile({ ...base(), maxTokenAge: "3650d", unsafeAllowLongTokenAge: true }).maxTokenAge,
+		3650 * 86400
+	);
+});
+
+test("custom key sources must go through unsafeCustomKeySource()", () => {
+	const source = { getVerificationKey: async () => ({ alg: "EdDSA", key: publicKey }) } as never;
+	assert.throws(() => defineProfile({ ...base(), keys: source }), TypeError);
+	assert.doesNotThrow(() => defineProfile({ ...base(), keys: unsafeCustomKeySource(source) }));
+	assert.doesNotThrow(() => defineProfile({ ...base(), keys: createLocalJWKSet({ keys: [] }) }));
 });
 
 test("verification profiles refuse private keys", () => {
@@ -92,11 +119,18 @@ test("a profile key must be inside the profile's own allowlist", () => {
 
 test("remote JWKS configs must be https", () => {
 	assert.throws(
-		() => defineProfile({ ...base(), keys: { jwksUri: "http://auth.example.com/jwks" } }),
+		() => defineProfile({ ...base(), keys: { ...REMOTE, jwksUri: "http://auth.example.com/jwks" } }),
 		TypeError
 	);
 	assert.doesNotThrow(() =>
-		defineProfile({ ...base(), keys: { jwksUri: "https://auth.example.com/jwks" } })
+		defineProfile({ ...base(), keys: { ...REMOTE, jwksUri: "https://auth.example.com/jwks" } })
+	);
+});
+
+test("a remote JWKS config must name its cache, cooldown and timeout numbers", () => {
+	assert.throws(
+		() => defineProfile({ ...base(), keys: { jwksUri: "https://auth.example.com/jwks" } as never }),
+		(error: unknown) => error instanceof TypeError && error.message.includes("cacheTtlSeconds")
 	);
 });
 
