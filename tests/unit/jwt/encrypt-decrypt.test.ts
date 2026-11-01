@@ -195,3 +195,11 @@ test("[LW-enc.1] an encryption key from the wrong family, curve or size is refus
 	await assert.doesNotReject(importEncryptionKey(good.publicKey.key as CryptoKey, "ECDH-ES+A256KW"));
 	await assert.doesNotReject(importEncryptionKey(p384, "ECDH-ES"));
 });
+
+test("[LW-enc.1] a dir key that fits none of the profile's content encryptions is refused when the profile is built", () => {
+	const key256 = generateDirectKey("A256GCM"); // 32 bytes: A256GCM or A128CBC-HS256
+	assert.throws(() => profile(key256, ["dir"], ["A128GCM"]), TypeError);
+	assert.throws(() => profile(key256, ["dir"], ["A128GCM", "A192GCM"]), TypeError);
+	assert.doesNotThrow(() => profile(key256, ["dir"], ["A128CBC-HS256"]));
+	assert.doesNotThrow(() => profile(key256, ["dir"], ["A128GCM", "A256GCM"]));
+});

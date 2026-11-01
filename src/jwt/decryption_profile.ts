@@ -8,6 +8,7 @@
 
 import { mintedKind } from "../lib/minted.js";
 import {
+	getContentEncryptionProperties,
 	toValidContentEncryptionAlg,
 	toValidKeyManagementAlg,
 } from "../lib/jwe_algorithms.js";
@@ -55,6 +56,14 @@ export function defineDecryptionProfile(options: DecryptionProfileOptions): Expe
 	}
 	if (!keyManagementAlgorithms.some((allowed) => (allowed as string) === options.key.algorithm)) {
 		throw new TypeError("The profile key's algorithm is not in the keyManagementAlgorithms allowlist");
+	}
+	// A dir key is the content-encryption key, so its size names its enc. If
+	// no allowlisted enc fits it, every token this profile sees would fail.
+	if (options.key.algorithm === "dir") {
+		const size = (options.key.key as Uint8Array).length;
+		if (!contentEncryptionAlgorithms.some((enc) => getContentEncryptionProperties(enc).cekBytes === size)) {
+			throw new TypeError(`This ${size}-byte dir key fits none of the contentEncryptionAlgorithms`);
+		}
 	}
 
 	return decryptionProfiles.mint({
