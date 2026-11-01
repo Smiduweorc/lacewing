@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-11-01
+
+### Bug Fixes
+
+- Clean dist before rebuild to drop stale items
+
 ## [2.0.0] - 2026-10-16
 
 ### Bug Fixes
