@@ -102,10 +102,6 @@ export class MemoryRevocationStore implements RevocationStore {
 		);
 	}
 
-	async isAnyRevoked(contexts: TokenRevocationContext[]): Promise<boolean[]> {
-		return Promise.all(contexts.map((context) => this.isRevoked(context)));
-	}
-
 	/** Number of live revocations of all three kinds (expired entries may linger until a sweep). */
 	get size(): number {
 		return this.#tokens.size + this.#subjects.size + this.#sessions.size;

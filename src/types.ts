@@ -161,7 +161,6 @@ export interface TokenRevocationContext {
 
 export interface RevocationStore {
 	isRevoked(context: TokenRevocationContext): Promise<boolean>;
-	isAnyRevoked?(contexts: TokenRevocationContext[]): Promise<boolean[]>;
 }
 
 export type ValidateClaim = (

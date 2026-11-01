@@ -44,12 +44,6 @@ test("revoke validates its inputs", () => {
 	store.revoke("y", new Date(Date.now() + 60_000));
 });
 
-test("isAnyRevoked maps over contexts", async () => {
-	const store = new MemoryRevocationStore();
-	store.revoke("a", nowSeconds() + 300);
-	assert.deepEqual(await store.isAnyRevoked([context("a"), context("b")]), [true, false]);
-});
-
 test("buildRevocationContext extracts only the revocation-relevant slice", () => {
 	const context_ = buildRevocationContext({
 		jti: "j",
