@@ -17,12 +17,15 @@ import { getContentEncryptionProperties, getKeyManagementProperties } from "../l
 import { isLacewingEncryptionKey, type DurationSeconds, type LacewingEncryptionKey } from "../types.js";
 
 const DEFAULT_MAX_LIFETIME_SECONDS = 3600;
+const LONG_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_CONTENT_ENCRYPTION = "A256GCM";
 const RESERVED_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti"]);
 
 export interface EncryptJwtOptions {
-	/** Cap on `.expiresIn()`. Default 1h - raising it is a visible choice. */
+	/** Cap on `.expiresIn()`. Default 1h, at most 30 days unless `unsafeAllowLongLifetime` is set. */
 	maxLifetime?: number | string;
+	/** Ugly on purpose: allow `maxLifetime` above 30 days. */
+	unsafeAllowLongLifetime?: boolean;
 	/** Content-encryption algorithm (`enc`). Default `A256GCM`. */
 	contentEncryption?: string;
 }
@@ -48,6 +51,11 @@ export class EncryptJWT {
 		}
 		this.#typ = typ;
 		this.#maxLifetime = parseDuration(options.maxLifetime ?? DEFAULT_MAX_LIFETIME_SECONDS);
+		if (this.#maxLifetime > LONG_LIFETIME_SECONDS && options.unsafeAllowLongLifetime !== true) {
+			throw new TypeError(
+				"EncryptJWT maxLifetime is capped at 30 days - set unsafeAllowLongLifetime to go beyond"
+			);
+		}
 		this.#enc = options.contentEncryption ?? DEFAULT_CONTENT_ENCRYPTION;
 		// Fail fast on an unknown enc rather than at .encrypt() time.
 		getContentEncryptionProperties(this.#enc);

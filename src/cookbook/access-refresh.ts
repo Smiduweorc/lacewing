@@ -99,5 +99,5 @@ export function newAccessToken(): SignJWT {
  * tolerates, and the token should be revocable.
  */
 export function newRefreshToken(): SignJWT {
-	return new SignJWT(REFRESH_TOKEN_TYP, { maxLifetime: "90d" });
+	return new SignJWT(REFRESH_TOKEN_TYP, { maxLifetime: "30d" });
 }
