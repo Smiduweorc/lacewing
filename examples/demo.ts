@@ -97,7 +97,7 @@ await rejected("the token from step 1, after revoke(jti)", () => jwtVerify(token
 
 console.log("\n6. Access vs refresh (typ does the work)");
 const apiProfile = accessTokenProfile({ issuer: ISSUER, audience: AUDIENCE, algorithms: ["EdDSA"], keys: publicKey });
-const authProfile = refreshTokenProfile({ issuer: ISSUER, audience: ISSUER + "/token", algorithms: ["EdDSA"], keys: publicKey });
+const authProfile = refreshTokenProfile({ issuer: ISSUER, audience: ISSUER + "/token", algorithms: ["EdDSA"], keys: publicKey, revocation });
 const refreshToken = await newRefreshToken()
 	.issuer(ISSUER)
 	.audience(ISSUER + "/token")

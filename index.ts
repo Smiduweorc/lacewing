@@ -39,6 +39,7 @@ export {
 	ACCESS_TOKEN_TYP,
 	REFRESH_TOKEN_TYP,
 	type TokenProfileOptions,
+	type RefreshTokenProfileOptions,
 } from "./src/cookbook/access-refresh.js";
 
 // Keys

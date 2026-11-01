@@ -18,6 +18,7 @@ import {
 	generateKeyPair,
 	type LacewingKey,
 	type SignJWT,
+	MemoryRevocationStore,
 } from "../../index.js";
 
 const ISSUER = "https://auth.example.com";
@@ -28,7 +29,8 @@ const { publicKey, privateKey } = await generateKeyPair("EdDSA");
 // Deliberately the *same* issuer, audience, algorithm and key for both kinds,
 // so the only thing standing between them is `typ`. If the profiles still
 // refuse each other's tokens, the separation cannot be an accident of config.
-const shared = { issuer: ISSUER, audience: API, algorithms: ["EdDSA"], keys: publicKey } as const;
+const revocation = new MemoryRevocationStore();
+const shared = { issuer: ISSUER, audience: API, algorithms: ["EdDSA"], keys: publicKey, revocation } as const;
 const access = accessTokenProfile({ ...shared, maxTokenAge: "30d" });
 const refresh = refreshTokenProfile({ ...shared, maxTokenAge: "30d" });
 
@@ -71,4 +73,22 @@ test("[LW-kind.1] the two profiles disagree on typ by construction, whatever els
 	// The typ is fixed by the factory: callers cannot accidentally align them.
 	const misconfigured = accessTokenProfile({ ...shared, maxTokenAge: "30d", typ: "rt+jwt" } as never);
 	assert.equal(misconfigured.typ, "at+jwt");
+});
+
+test("[LW-kind.1][LW-rev.2] a refresh profile needs a revocation store, or opts out by name", () => {
+	const { revocation: _revocation, ...unrevocable } = shared;
+	assert.throws(
+		() => refreshTokenProfile(unrevocable as never),
+		(error: unknown) => error instanceof TypeError && error.message.includes("unsafeNoRevocation")
+	);
+	assert.throws(() => refreshTokenProfile({ ...shared, unsafeNoRevocation: true } as never), TypeError);
+	const optedOut = refreshTokenProfile({ ...unrevocable, unsafeNoRevocation: true });
+	assert.equal(optedOut.revocation, undefined);
+	assert.equal(refreshTokenProfile(shared).revocation, revocation);
+});
+
+test("[LW-kind.1] the cookbook defaults: access 10m and refresh 30d accepted age", () => {
+	const { revocation: _revocation, ...base } = shared;
+	assert.equal(accessTokenProfile(base).maxTokenAge, 600);
+	assert.equal(refreshTokenProfile(shared).maxTokenAge, 30 * 86400);
 });
