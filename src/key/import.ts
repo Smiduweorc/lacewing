@@ -18,6 +18,19 @@ import {
 	type StaticJWK,
 } from "../types.js";
 
+/**
+ * Refuse an RSA key below `minBits`, whichever way it arrived (JWK, PEM or
+ * CryptoKey). Without this a 1024-bit key imports and only fails later,
+ * inside jose, as a signature or encryption error that names nothing.
+ */
+export function assertRsaModulus(key: unknown, minBits: number, alg: string): void {
+	const algorithm = (key as CryptoKey).algorithm as { modulusLength?: number } | undefined;
+	const bits = algorithm?.modulusLength;
+	if (typeof bits === "number" && bits < minBits) {
+		throw new JWTError("KEY_TYPE_MISMATCH", `${alg} requires an RSA modulus of at least ${minBits} bits`);
+	}
+}
+
 /** JWK object, PEM string (PKCS#8 / SPKI), raw secret, or a CryptoKey. */
 export type KeyMaterial = StaticJWK | string | Uint8Array | CryptoKey;
 
@@ -170,6 +183,7 @@ export async function importKey<const Alg extends string>(
 			return createLacewingKey(alg, "secret", key);
 		}
 		const { key, keyType } = await importAsymmetric(material, info.name, info);
+		if (info.kty === "RSA") assertRsaModulus(key, info.minKeyBits, info.name);
 		return createLacewingKey(alg, keyType, key);
 	} catch (cause) {
 		if (

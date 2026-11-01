@@ -166,3 +166,32 @@ test("a decrypted payload carrying an own __proto__ member is rejected", async (
 		message: "lacewing: Token payload contains the member name \"__proto__\", which can pollute object prototypes",
 	});
 });
+
+// Found in the second v3 audit: encryption keys skipped the family, curve and
+// modulus checks signing keys get, and failed only when first used.
+test("[LW-enc.1] an encryption key from the wrong family, curve or size is refused at import", async () => {
+	const { generateKeyPairSync } = await import("node:crypto");
+	const subtle = globalThis.crypto.subtle;
+	const ecdsa = await subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+	const x25519 = generateKeyPairSync("x25519").publicKey.toCryptoKey("X25519", true, []);
+	const pss = await subtle.generateKey(
+		{ name: "RSA-PSS", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]
+	);
+	const weakRsa = generateKeyPairSync("rsa", { modulusLength: 1024 });
+	const cases: Array<[string, unknown, string]> = [
+		["ECDSA CryptoKey", ecdsa.publicKey, "ECDH-ES"],
+		["X25519 CryptoKey", x25519, "ECDH-ES"],
+		["RSA JWK for ECDH", { kty: "RSA", n: "AQAB", e: "AQAB" }, "ECDH-ES"],
+		["OKP JWK for ECDH", { kty: "OKP", crv: "X25519", x: "AAAA" }, "ECDH-ES+A256KW"],
+		["RSA-PSS CryptoKey for OAEP", pss.publicKey, "RSA-OAEP-256"],
+		["RSA-1024 PEM for OAEP", weakRsa.publicKey.export({ type: "spki", format: "pem" }), "RSA-OAEP-256"],
+		["RSA-1024 JWK for OAEP", weakRsa.publicKey.export({ format: "jwk" }), "RSA-OAEP-256"],
+	];
+	for (const [name, material, alg] of cases) {
+		await assert.rejects(importEncryptionKey(material as never, alg), refusal("KEY_TYPE_MISMATCH"), name);
+	}
+	const good = await generateEncryptionKeyPair("ECDH-ES+A256KW", { extractable: true });
+	const p384 = generateKeyPairSync("ec", { namedCurve: "P-384" }).publicKey.toCryptoKey({ name: "ECDH", namedCurve: "P-384" }, true, []);
+	await assert.doesNotReject(importEncryptionKey(good.publicKey.key as CryptoKey, "ECDH-ES+A256KW"));
+	await assert.doesNotReject(importEncryptionKey(p384, "ECDH-ES"));
+});

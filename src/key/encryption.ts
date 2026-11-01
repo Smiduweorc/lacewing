@@ -14,6 +14,7 @@ import {
 	type JweKeyManagementInfo,
 } from "../lib/jwe_algorithms.js";
 import { decodeBase64url } from "../lib/base64url.js";
+import { assertRsaModulus } from "./import.js";
 import {
 	createLacewingEncryptionKey,
 	SetAlg,
@@ -129,6 +130,28 @@ function importSymmetric(material: EncryptionKeyMaterial, info: JweKeyManagement
 	return secret;
 }
 
+// What a CryptoKey for each asymmetric family must be: an ECDSA key is not an
+// ECDH key, and an RSA-PSS key is not an RSA-OAEP one.
+const WEBCRYPTO_NAME: Record<"ecdh" | "rsa", string> = { ecdh: "ECDH", rsa: "RSA-OAEP" };
+const EC_CURVES = new Set(["P-256", "P-384", "P-521"]);
+
+function assertAsymmetricFamily(material: EncryptionKeyMaterial, info: JweKeyManagementInfo, algorithm: string): void {
+	const family = info.kind as "ecdh" | "rsa";
+	if (material instanceof CryptoKey) {
+		const { name, namedCurve } = material.algorithm as { name: string; namedCurve?: string };
+		if (name !== WEBCRYPTO_NAME[family] || (family === "ecdh" && !EC_CURVES.has(namedCurve ?? ""))) {
+			throw new JWTError("KEY_TYPE_MISMATCH", `CryptoKey algorithm "${name}" cannot be used with ${algorithm}`);
+		}
+		return;
+	}
+	if (typeof material === "object" && material !== null && !(material instanceof Uint8Array)) {
+		const jwk = material as StaticJWK;
+		if (jwk.kty !== info.kty || (family === "ecdh" && !EC_CURVES.has(String(jwk.crv)))) {
+			throw new JWTError("KEY_TYPE_MISMATCH", `This JWK cannot be used with ${algorithm} (expected ${info.kty})`);
+		}
+	}
+}
+
 async function importAsymmetricEncryption(
 	material: EncryptionKeyMaterial,
 	algorithm: string
@@ -177,7 +200,11 @@ export async function importEncryptionKey<const Alg extends string>(
 		if (info.kty === "oct") {
 			return createLacewingEncryptionKey(alg, "secret", importSymmetric(material, info, algorithm));
 		}
+		assertAsymmetricFamily(material, info, algorithm);
 		const { key, keyType } = await importAsymmetricEncryption(material, algorithm);
+		// Again on the imported key, which also covers PEM input.
+		assertAsymmetricFamily(key as CryptoKey, info, algorithm);
+		if (info.kind === "rsa") assertRsaModulus(key, info.minKeyBits as number, algorithm);
 		return createLacewingEncryptionKey(alg, keyType, key);
 	} catch (cause) {
 		if (cause instanceof JWTError && (cause.code === "KEY_TYPE_MISMATCH" || cause.code === "KEY_IMPORT_FAILED")) throw cause;

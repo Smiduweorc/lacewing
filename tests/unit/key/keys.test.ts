@@ -133,3 +133,18 @@ test("exported JWKs carry their bound alg and use", async () => {
 test("symmetric secrets have no PEM form", async () => {
 	await assert.rejects(exportKeyPEM(generateSecret("HS256")), refusal("KEY_EXPORT_FAILED"));
 });
+
+// Found in the second v3 audit: a 1024-bit RSA key imported through PEM or
+// a CryptoKey, and failed only later inside jose with an error naming nothing.
+test("[8725-3.5.1] an RSA key under 2048 bits is refused at import, by every path", async () => {
+	const { generateKeyPairSync } = await import("node:crypto");
+	const weak = generateKeyPairSync("rsa", { modulusLength: 1024 });
+	const spki = weak.publicKey.export({ type: "spki", format: "pem" }) as string;
+	const jwk = weak.publicKey.export({ format: "jwk" }) as StaticJWK;
+	const cryptoKey = weak.publicKey.toCryptoKey({ name: "RSA-PSS", hash: "SHA-256" }, true, ["verify"]);
+	for (const material of [spki, jwk, cryptoKey]) {
+		await assert.rejects(importKey(material, "PS256"), refusal("KEY_TYPE_MISMATCH"));
+	}
+	const strong = generateKeyPairSync("rsa", { modulusLength: 2048 });
+	await assert.doesNotReject(importKey(strong.publicKey.export({ type: "spki", format: "pem" }) as string, "PS256"));
+});
