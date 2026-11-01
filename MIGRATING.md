@@ -65,6 +65,24 @@ Behaviour that changed without an API change:
   `revokeSubject(sub, until)` and `revokeSession(sid, until)`. Revoking the
   same `jti` twice keeps the later expiry instead of the last one written.
 
+## For packages that take a Lacewing profile
+
+A package that accepts your profile (Antlion, for one) used to check its
+shape. A shape is now worthless: `jwtVerify` throws `TypeError` for any
+profile `defineProfile` didn't build. Check provenance where the package is
+configured, so a bad profile fails at setup rather than on the first request:
+
+```ts
+import { isVerificationProfile } from "lacewing/extension";
+
+if (!isVerificationProfile(options.token)) {
+  throw new TypeError("token must be a profile from defineProfile()");
+}
+```
+
+Tests that hand-rolled a `KeySource` wrap it in `unsafeCustomKeySource`, and
+`claimValidators` is `unsafeClaimValidators`. Raise the peer range to `^3.0.0`.
+
 # Migrating from 1.x to 2.0
 
 2.0 breaks two things on purpose: how legacy `RS*` algorithms are enabled, and

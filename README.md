@@ -3,22 +3,11 @@
 
 **Lacewing is an opinionated JWT library for people who want the safe way to be the only easy way, and the unsafe way to be something you have to type out loud.**
 
-It does not hand you primitives and wish you luck. You get verification profiles, a short algorithm list, mandatory claim checks, revocation, cookie helpers, and a refusal for most of the ways people usually get JWTs wrong. Every RFC 8725 (JWT Best Current Practices) requirement a library is in a position to check is checked, and `tools/compliance-gate.ts` fails the build if one of them has no passing test. What it cannot check is listed under [what only you can decide](#what-only-you-can-decide), because pretending otherwise would be the exact kind of lie this library exists to stop.
+It signs, verifies and encrypts JWTs through profiles you define once, with a short algorithm list, required claim checks, a JWKS client, revocation and cookie helpers. Every RFC 8725 (JWT Best Current Practices) requirement a library can check is checked, and `tools/compliance-gate.ts` fails the build if one has no passing test. What it can't check is under [what only you can decide](#what-only-you-can-decide).
 
 **The signature maths is not ours.** Lacewing enforces the *policy* RFC 8725 asks for. The ECDSA and EdDSA signing and verifying, curve point checks, and nonce generation are done by [jose](https://github.com/panva/jose) on top of Node's WebCrypto (OpenSSL). Lacewing does not control or re-check them. ECDSA nonces are whatever Node's OpenSSL build produces (randomised, not RFC 6979 deterministic), and low-level primitive conformance is only as good as your Node version. The compliance suite tests that Lacewing calls these primitives correctly, not the primitives themselves.
 
 One runtime dependency (`jose`), nothing happens at import time, ESM only.
-
-**Batteries loaded (RFC 8725):**
-
-- **Verification profiles**: the only way to verify; `typ`, issuer, audience, algorithm allowlist, key source and maximum token age are required
-- **Remote JWKS** with caching, rotation handling, `kid` hygiene, a fetch cooldown, a 1 MiB response budget, and a *bounded* stale-serving window when the endpoint goes down
-- **Revocation**: a random `jti` on every token (unless you set your own), a `RevocationStore` interface, and an in-memory store for one process that revokes by `jti`, subject or session. Refresh-token profiles refuse to exist without one
-- **Cookie + bearer helpers**: `HttpOnly; Secure; SameSite` always set, `SameSite=None` refused, strict RFC 6750 parsing
-- **Access/refresh token presets**: mutually exclusive by `typ`, shipped rather than left as homework
-- **Encrypted JWTs (JWE)** with the same profile discipline
-- **A sign-time payload scanner** that refuses claim names that read as passwords, secrets, keys or tokens, and values that are PEM private keys, other JWTs or real card numbers. It is a net for the obvious mistakes, not a mind reader: a password under a claim called `note` goes straight through
-- **One error class** with a machine-readable `code`; messages never echo token content
 
 ## Lacewing is not for you if you
 
@@ -26,7 +15,7 @@ One runtime dependency (`jose`), nothing happens at import time, ESM only.
 - **need `alg: none`, `RS256` as a bare string, `RSA1_5` or `PBES2`.** Not available. Legacy `RS*` comes in through `lacewing/legacy/rsa`, by name, per profile.
 - **want a token with no `iss`, no `aud` or no `exp`** without saying so in code. You can, through `unsafeAllowMissing*`, and your reviewer will see it.
 - **want the library to pick your cache TTLs and timeouts.** Your JWKS endpoint, your rotation schedule, your latency budget. You pick.
-- **need tokens bound to a client** (DPoP, mTLS). Bearer tokens only.
+- **need tokens bound to a client.** Lacewing does bearer tokens. DPoP is [Antlion](https://github.com/Smiduweorc/antlion), which wraps a Lacewing profile; mTLS-bound tokens are nobody's here.
 - **run on CommonJS or Node older than 24.**
 
 ## Security advisories
@@ -87,9 +76,9 @@ A runnable version of everything in this README ships with the repo: `npm run de
 
 ## Concepts
 
-**Profiles are the central abstraction.** Configuration is something you create once, not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a `JWTError` whose `code` says why (`JWT_EXPIRED`, `ALGORITHM_NOT_ALLOWED`, `JWT_CLAIM_VALIDATION_FAILED`, ...) and no partial result.
+**Everything goes through a profile.** You define one per kind of token, once. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a `JWTError` whose `code` says why (`JWT_EXPIRED`, `ALGORITHM_NOT_ALLOWED`, `JWT_CLAIM_VALIDATION_FAILED`, ...) and no partial result.
 
-**Built on jose.** Lacewing does not reimplement cryptography. It is a policy layer over [jose](https://github.com/panva/jose) (the audited, maintained, runtime-portable JOSE implementation), so the novel code is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs.
+**Built on jose.** Lacewing does not reimplement cryptography. It is a policy layer over [jose](https://github.com/panva/jose), so the code that's ours is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs.
 
 **What the conformance suite shows, and what it doesn't.** `tests/conformance/golden/` holds tokens Lacewing did not make. Seven were built with no JOSE library at all and must be accepted: HS256 from the OpenSSL CLI, and Ed25519, ES256, PS256, `dir`/A256GCM and ECDH-ES+A256KW/A256GCM from pyca/cryptography (`tools/golden-vectors.py` is how; re-run it and diff). One more OpenSSL token must be refused for its audience. The four RFC 7515/7516/7519 worked examples are all *refused*, each for the reason it should be: no `aud`, no `typ`, `RSA1_5`, `RSA-OAEP` with SHA-1. No RFC example can pass, because none of them carries a `typ` and an `aud`. Separately, the jose round-trip tests show jose accepts what Lacewing signs, which mostly shows we call jose correctly, since that is what Lacewing is built on.
 
@@ -97,7 +86,7 @@ A runnable version of everything in this README ships with the repo: `npm run de
 
 ### Verify: a profile backed by a remote JWKS
 
-This is what real deployments should look like, so it's the first example:
+With an issuer that publishes a JWKS:
 
 ```ts
 import { defineProfile, jwtVerify, createRemoteJWKSet } from "lacewing";
@@ -283,9 +272,9 @@ res.setHeader("Set-Cookie", buildTokenCookie(token)); // the response side is ju
 
 ### Access vs refresh (the cookbook)
 
-The single most common token-confusion bug is letting a refresh token buy API
-access, or an access token mint new sessions. Lacewing **ships** the two
-profiles rather than leaving them as homework. They are mutually exclusive by
+A refresh token that buys API access, or an access token that mints new
+sessions, is a token-confusion bug. Lacewing has both profiles built in, and
+they are mutually exclusive by
 `typ` (RFC 8725 §3.12), so presenting one where the other is expected fails,
 even with identical keys, claims and audience:
 
@@ -426,9 +415,9 @@ Your levers, in order of cheapness:
   rescue one. A once-only cache is not built in: which store,
   which TTL and what happens when it's down are your deployment's decisions,
   not something a library should silently half-do.
-- **Proof-of-possession** (mTLS-bound or DPoP-bound tokens) when replay by a
-  network eavesdropper is in your threat model. Lacewing does bearer tokens
-  only.
+- **Proof-of-possession** when replay by a network eavesdropper is in your
+  threat model. Lacewing does bearer tokens only; for DPoP-bound tokens, put
+  [Antlion](https://github.com/Smiduweorc/antlion) in front of your profile.
 
 ### Encrypting (JWE): when the payload really is a secret
 
@@ -564,13 +553,14 @@ Lacewing about what a valid algorithm, duration or JWS segment is. It is
 covered by semver like the root export, and it is read-only:
 
 ```ts
-import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } from "lacewing/extension";
+import { getAlgorithmProperties, isVerificationProfile, parseDuration, parseJsonObject, readHeaderValue } from "lacewing/extension";
 
 getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
 getAlgorithmProperties("RS256", [LEGACY_RS256]); // legacy names answer only for a caller that passes them
 parseDuration("15m");            // 900, as DurationSeconds
 parseJsonObject(text, "header"); // a plain object, or JWT_INVALID; a member named twice, or __proto__/constructor/prototype, is refused
 readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
+isVerificationProfile(profile);  // true only for a profile defineProfile built
 ```
 
 Descriptors come back frozen, so nothing that imports them can lower a

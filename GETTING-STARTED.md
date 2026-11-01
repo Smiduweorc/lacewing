@@ -7,9 +7,8 @@ title: Getting started
 Adopting Lacewing in a real service: keys, profiles, issuing, verifying,
 transport, refresh tokens, revocation, and key distribution.
 
-Every code sample below was executed against the library before publishing.
-
-For the pitch and the API reference, see the [README](./README.md).
+For the API reference, see the [README](./README.md); `npm run demo` runs the
+main flows end to end.
 
 **Contents**
 
@@ -364,8 +363,8 @@ c.header("Set-Cookie", buildTokenCookie(token));        // Hono
 
 ## 8. Access and refresh tokens
 
-The most common token-confusion bug is a refresh token buying API access, or
-an access token minting new sessions. Both profiles ship with the library:
+A refresh token buying API access, or an access token minting new sessions,
+is a token-confusion bug. Both profiles ship with the library:
 
 ```ts
 import {
