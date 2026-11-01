@@ -13,6 +13,7 @@ import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
 import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
+import { assertPayloadIsVerifiable, assertTokenIsVerifiable } from "../lib/limits.js";
 import { claimPathKey, scanPayloadForSensitiveData } from "../lib/payload_hygiene.js";
 import { isLacewingKey, type DurationSeconds, type LacewingKey } from "../types.js";
 
@@ -237,8 +238,11 @@ export class SignJWT {
 
 		scanPayloadForSensitiveData(payload, this.#allowedClaims);
 
-		return new CompactSign(encodeUTF8(JSON.stringify(payload)))
+		const json = JSON.stringify(payload);
+		assertPayloadIsVerifiable(payload, json, "SignJWT");
+		const token = await new CompactSign(encodeUTF8(json))
 			.setProtectedHeader({ alg: key.algorithm, typ: this.#typ })
 			.sign(key.key as Parameters<CompactSign["sign"]>[0]);
+		return assertTokenIsVerifiable(token, "SignJWT");
 	}
 }

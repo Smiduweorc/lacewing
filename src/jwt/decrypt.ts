@@ -18,6 +18,7 @@ import { compactDecrypt } from "jose";
 import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
+import { MAX_TOKEN_LENGTH } from "../lib/limits.js";
 import { parseJsonObject } from "../lib/json.js";
 import { FORBIDDEN_PARAMS, sanitizeKid, normalizeTyp } from "../lib/headers.js";
 import {
@@ -34,8 +35,6 @@ import {
 	type JweHeader,
 	type JwtPayLoad,
 } from "../types.js";
-
-const MAX_TOKEN_LENGTH = 16384;
 
 function validateJweHeader(raw: Record<string, unknown>, profile: ExpectedDecryptionProfile): JweHeader {
 	for (const param of FORBIDDEN_PARAMS) {

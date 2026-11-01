@@ -8,9 +8,8 @@
 
 import { JWTError } from "../util/errors.js";
 import { nowSeconds as readSeconds } from "../util/clock.js";
+import { MAX_STRING_CLAIM_LENGTH } from "./limits.js";
 import type { ClaimsPolicy } from "../types.js";
-
-const MAX_STRING_CLAIM_LENGTH = 1024;
 
 function requireString(payload: Record<string, unknown>, claim: string): string {
 	const value = payload[claim];

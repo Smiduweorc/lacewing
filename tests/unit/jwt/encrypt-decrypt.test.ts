@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { refusal } from "../../helpers.js";
 import { Buffer } from "node:buffer";
+import { CompactEncrypt } from "jose";
 import {
 	EncryptJWT,
 	jwtDecrypt,
@@ -153,9 +154,12 @@ test("[strictness] non-canonical trailing bits are rejected in every JWE segment
 });
 
 test("a decrypted payload carrying an own __proto__ member is rejected", async () => {
-	const token = await new EncryptJWT("at+jwt", { contentEncryption: "A256GCM" })
-		.issuer(ISS).audience(AUD).subject("user-42").claim("__proto__", { isAdmin: true }).expiresIn("5m")
-		.encrypt(dir);
+	// EncryptJWT refuses to build this, so another encrypter has to.
+	const now = Math.floor(Date.now() / 1000);
+	const payload = `{"iss":"${ISS}","aud":"${AUD}","sub":"user-42","iat":${now},"exp":${now + 300},"__proto__":{"isAdmin":true}}`;
+	const token = await new CompactEncrypt(new TextEncoder().encode(payload))
+		.setProtectedHeader({ alg: "dir", enc: "A256GCM", typ: "at+jwt" })
+		.encrypt(dir.key as Uint8Array);
 	await assert.rejects(jwtDecrypt(token, profile(dir, ["dir"], ["A256GCM"])), {
 		name: "JWTError",
 		code: "JWT_INVALID",

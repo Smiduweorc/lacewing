@@ -19,6 +19,7 @@ import { compactVerify } from "jose";
 import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
+import { MAX_TOKEN_LENGTH } from "../lib/limits.js";
 import { parseJsonObject } from "../lib/json.js";
 import { validateHeader } from "../lib/headers.js";
 import { validateClaims } from "../lib/claims.js";
@@ -34,9 +35,6 @@ import {
 	type ResolvedVerificationKey,
 	type VerifiedJwt,
 } from "../types.js";
-
-// Bounded before any parsing so garbage can't allocate unboundedly.
-const MAX_TOKEN_LENGTH = 16384;
 
 function parseSegmentJson(bytes: Uint8Array, what: string): Record<string, unknown> {
 	return parseJsonObject(decodeUTF8(bytes), what);

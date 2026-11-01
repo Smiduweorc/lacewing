@@ -14,6 +14,7 @@ import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
 import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
+import { assertPayloadIsVerifiable, assertTokenIsVerifiable } from "../lib/limits.js";
 import { getContentEncryptionProperties, getKeyManagementProperties } from "../lib/jwe_algorithms.js";
 import { isLacewingEncryptionKey, type DurationSeconds, type LacewingEncryptionKey } from "../types.js";
 
@@ -198,8 +199,11 @@ export class EncryptJWT {
 		if (this.#expiresIn !== undefined) payload.exp = now + this.#expiresIn;
 		payload.iat = now;
 
-		return new CompactEncrypt(encodeUTF8(JSON.stringify(payload)))
+		const json = JSON.stringify(payload);
+		assertPayloadIsVerifiable(payload, json, "EncryptJWT");
+		const token = await new CompactEncrypt(encodeUTF8(json))
 			.setProtectedHeader({ alg: key.algorithm, enc: this.#enc, typ: this.#typ })
 			.encrypt(key.key as Parameters<CompactEncrypt["encrypt"]>[0]);
+		return assertTokenIsVerifiable(token, "EncryptJWT");
 	}
 }
