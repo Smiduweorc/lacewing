@@ -123,3 +123,27 @@ test("notBefore at or after expiresIn is refused, one second before is fine", as
 		await assert.doesNotReject(build(599));
 	}
 });
+
+// Found in the second v3 audit: every comparison with NaN is false, so a
+// clock returning NaN made an expired token verify and signed exp: null.
+test("a clock that returns NaN, Infinity or a non-number throws instead of failing open", async () => {
+	const secret = generateSecret("HS256");
+	const token = await new SignJWT("at+jwt", { now: () => T0 }).issuer(ISS).audience(AUD).expiresIn("1m").sign(secret);
+	for (const broken of [Number.NaN, Number.POSITIVE_INFINITY, "1767225600000", undefined]) {
+		const now = (): number => broken as number;
+		const profile = defineProfile({ typ: "at+jwt", issuer: ISS, audience: AUD, algorithms: ["HS256"], keys: secret, maxTokenAge: "5m", now });
+		await assert.rejects(jwtVerify(token, profile), TypeError, `verify with ${String(broken)}`);
+		await assert.rejects(new SignJWT("at+jwt", { now }).issuer(ISS).audience(AUD).expiresIn("1m").sign(secret), TypeError);
+		await assert.rejects(new MemoryRevocationStore({ now }).isRevoked({ jti: "j", exp: 1, iat: 1 }), TypeError);
+	}
+});
+
+test("a clock is checked on every read, so one that breaks later still throws", async () => {
+	const secret = generateSecret("HS256");
+	let ms = T0;
+	const profile = defineProfile({ typ: "at+jwt", issuer: ISS, audience: AUD, algorithms: ["HS256"], keys: secret, maxTokenAge: "5m", now: () => ms });
+	const token = await new SignJWT("at+jwt", { now: () => T0 }).issuer(ISS).audience(AUD).expiresIn("1m").sign(secret);
+	await assert.doesNotReject(jwtVerify(token, profile));
+	ms = Number.NaN;
+	await assert.rejects(jwtVerify(token, profile), TypeError);
+});

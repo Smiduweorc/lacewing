@@ -14,7 +14,17 @@ export function requireClock(value: unknown, owner: string): Clock {
 	if (typeof value !== "function") {
 		throw new TypeError(`${owner} now must be a function returning milliseconds`);
 	}
-	return value as Clock;
+	const clock = value as () => unknown;
+	// Every comparison with NaN is false, so a clock returning NaN would make
+	// every token unexpired. Checked on each read, not once: a clock can break
+	// after construction.
+	return () => {
+		const ms = clock();
+		if (typeof ms !== "number" || !Number.isFinite(ms)) {
+			throw new TypeError(`${owner} now returned ${String(ms)}, not a finite number of milliseconds`);
+		}
+		return ms;
+	};
 }
 
 /** Whole unix seconds, as `iat`, `exp` and `nbf` count them. */
