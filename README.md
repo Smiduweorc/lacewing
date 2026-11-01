@@ -207,8 +207,9 @@ Then the payload scanner runs, because **a JWS payload is base64url-encoded plai
 readable by anyone who holds the token. It refuses claim names
 that read as passwords, secrets, API or private keys, tokens, SSNs or card
 data (matched by word: `apiKey` and `accesstoken` are refused, `businessName`
-and `tokenizer` are not), and values that are PEM private keys, other JWTs, or
-card numbers with a real brand prefix, length and Luhn check. That catches
+and `tokenizer` are not), and values that are PEM private keys, other JWTs or
+JWEs, or card numbers with a real brand prefix, length and Luhn check, written
+as text or as a number. That catches
 the copy-paste accident. It does not catch a password in a claim called
 `note`, base64 of anything, or anything else that looks like ordinary text.
 Never put secrets in it, scanner or no scanner.
@@ -632,7 +633,7 @@ apologies:
   lacewing` shows it; dedupe to one copy.
 
 - **`x5t` in a header rejects the token.** Lacewing refuses `jku`, `x5u`,
-  `jwk`, `x5c`, `x5t`, `zip` and `crit` outright rather than ignoring them,
+  `jwk`, `x5c`, `x5t`, `x5t#S256`, `zip` and `crit` outright rather than ignoring them,
   and there is no option to allow one. Microsoft Entra ID puts `x5t` (the
   same value as `kid`) on its v1.0 access tokens, and an API registration
   gets v1.0 tokens unless it asks otherwise, so Lacewing cannot verify Entra

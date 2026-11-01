@@ -20,6 +20,11 @@ build or runtime error in 3.0 until you change it.
 | a profile, key or key source built by hand or copied with `{ ...x }` | build it with `defineProfile`, `importKey` and friends; copies throw `TypeError` |
 | `keys: source` after `unsafeCustomKeySource(source)` | pass the wrapper it returns, not the original object |
 | `notBefore` at or after `expiresIn` | throws `TypeError`; such a token could never be valid |
+| signing a token `jwtVerify` would refuse (a `__proto__` member, an `iss`/`sub`/`jti` over 1024 characters, a token over 16384) | throws `TypeError` at `.sign()`/`.encrypt()` instead of failing at verify time |
+| an RSA key under 2048 bits from PEM or a `CryptoKey` | `KEY_TYPE_MISMATCH` at import (JWKs already were) |
+| an encryption key of the wrong family or curve (an ECDSA key for `ECDH-ES`, X25519, RSA-PSS for `RSA-OAEP-256`) | `KEY_TYPE_MISMATCH` at import |
+| a `dir` key whose size fits none of the profile's `contentEncryptionAlgorithms` | `TypeError` from `defineDecryptionProfile` |
+| `RevocationStore.isAnyRevoked` | removed; Lacewing never called it |
 
 The first four rows apply to both `defineProfile` and
 `defineDecryptionProfile`. Sources from `createLocalJWKSet` and
@@ -45,6 +50,15 @@ Behaviour that changed without an API change:
   with a decade of accepted age. Both are refused now.
 - **Binary HMAC secrets that repeat a short pattern** (all zeros, `fill(7)`)
   throw `ENTROPY_CHECK_FAILED`, from `importKey`, a JWKS and custom sources.
+- **A `now` clock that returns NaN or a non-number throws** on every read.
+  Every comparison with NaN is false, so it would have let expired tokens
+  through.
+- **`x5t#S256` in a header rejects the token**, like `x5t` already did.
+- **Cookie prefixes are matched in any case**: `__HOST-t` gets the `__Host-`
+  rules, as browsers apply them. A cookie path with a control character
+  throws.
+- **The scanner also refuses card numbers written as JSON numbers, and
+  compact JWEs.**
 - **New and optional:** an `onEvent` listener on profiles and
   `createRemoteJWKSet`, and a `now` clock option everywhere time is read.
 - **`MemoryRevocationStore` revokes by subject and session too**:
