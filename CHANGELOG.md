@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2026-11-04
+
+### Bug Fixes
+
+- [**breaking**] Match hygiene names by word, waive by path, cap lifetimes at 30 days
+- Refuse binary hmac secrets that repeat a short pattern
+- [**breaking**] Make keys, profiles and key sources unforgeable; add onEvent and a clock
+- Throw when a now option returns NaN or a non-number
+- [**breaking**] Refuse at sign time any token jwtVerify would refuse
+- Catch card numbers written as numbers, and embedded JWEs
+- Check the rsa modulus and the encryption key family at import
+- Refuse a dir key that fits none of the profile's encryptions
+- Refuse x5t#S256 like x5t
+- Apply the __host- rules in any case and refuse control characters
+
+### Documentation
+
+- Make every README claim true for 3.0 and add a 2.x migration guide
+- Document onEvent, the now clock and unforgeable provenance
+- List the second audit's fixes in MIGRATING and the README
+- Cut the marketing and point dpop at antlion
+
+### Features
+
+- [**breaking**] Spell every profile weakening unsafe and fix the jwks stale window
+- [**breaking**] Refresh profiles require revocation and match the signer cap
+- Revoke by subject and by session in the memory store
+- Export isVerificationProfile
+
+### Refactor
+
+- Delete the unused algorithm list and predicate helpers
+- [**breaking**] Drop isAnyRevoked, which Lacewing never called
+
+### Security
+
+- Move the readme's reference into guides and include every doc in typedoc
+
+### Testing
+
+- Add pyca ES256, PS256 and ECDH-ES golden vectors
+
 ## [2.0.1] - 2026-11-01
 
 ### Bug Fixes
