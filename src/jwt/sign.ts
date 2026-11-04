@@ -11,11 +11,14 @@
 import { CompactSign } from "jose";
 import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
+import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
-import { scanPayloadForSensitiveData } from "../lib/payload_hygiene.js";
+import { assertPayloadIsVerifiable, assertTokenIsVerifiable } from "../lib/limits.js";
+import { claimPathKey, scanPayloadForSensitiveData } from "../lib/payload_hygiene.js";
 import { isLacewingKey, type DurationSeconds, type LacewingKey } from "../types.js";
 
 const DEFAULT_MAX_LIFETIME_SECONDS = 3600;
+const LONG_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 
 // Set through dedicated methods only, so they can't be smuggled past the
 // requirement checks via .claim().
@@ -23,10 +26,14 @@ const RESERVED_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti"
 
 export interface SignJwtOptions {
 	/**
-	 * Cap on `.expiresIn()`. Default 1h - raising it is a
-	 * deliberate, visible configuration choice.
+	 * Cap on `.expiresIn()`. Default 1h, at most 30 days unless
+	 * `unsafeAllowLongLifetime` is set.
 	 */
 	maxLifetime?: number | string;
+	/** Ugly on purpose: allow `maxLifetime` above 30 days. */
+	unsafeAllowLongLifetime?: boolean;
+	/** Clock in milliseconds for `iat`/`nbf`/`exp`, default `Date.now`. */
+	now?: Clock;
 }
 
 /**
@@ -48,6 +55,7 @@ export interface SignJwtOptions {
 export class SignJWT {
 	readonly #typ: string;
 	readonly #maxLifetime: DurationSeconds;
+	readonly #now: Clock;
 	readonly #claims = new Map<string, unknown>();
 	readonly #allowedClaims = new Set<string>();
 	#iss?: string;
@@ -68,7 +76,13 @@ export class SignJWT {
 			);
 		}
 		this.#typ = typ;
+		this.#now = requireClock(options.now, "SignJWT");
 		this.#maxLifetime = parseDuration(options.maxLifetime ?? DEFAULT_MAX_LIFETIME_SECONDS);
+		if (this.#maxLifetime > LONG_LIFETIME_SECONDS && options.unsafeAllowLongLifetime !== true) {
+			throw new TypeError(
+				"SignJWT maxLifetime is capped at 30 days - set unsafeAllowLongLifetime to go beyond"
+			);
+		}
 	}
 
 	issuer(iss: string): this {
@@ -135,9 +149,17 @@ export class SignJWT {
 		return this;
 	}
 
-	/** Waive the payload hygiene scanner for one claim (LW-payload). Grep for this in review. */
-	unsafeAllowClaim(name: string): this {
-		this.#allowedClaims.add(name);
+	/**
+	 * Waive the payload hygiene scanner for one claim path (LW-payload), e.g.
+	 * `unsafeAllowClaim("profile", "businessName")` for a nested field. The
+	 * waiver covers that node and its subtree; array elements add no segment.
+	 * Grep for this in review.
+	 */
+	unsafeAllowClaim(...path: [string, ...string[]]): this {
+		if (path.length === 0 || path.some((segment) => typeof segment !== "string" || segment.length === 0)) {
+			throw new TypeError("unsafeAllowClaim needs a claim path of non-empty strings");
+		}
+		this.#allowedClaims.add(claimPathKey(path));
 		return this;
 	}
 
@@ -195,7 +217,16 @@ export class SignJWT {
 			);
 		}
 
-		const now = Math.floor(Date.now() / 1000);
+		if (
+			this.#notBefore !== undefined &&
+			this.#expiresIn !== undefined &&
+			this.#notBefore >= this.#expiresIn
+		) {
+			// nbf at or after exp makes a token that can never be valid.
+			throw new TypeError("notBefore must be earlier than expiresIn");
+		}
+
+		const now = nowSeconds(this.#now);
 		const payload: Record<string, unknown> = Object.fromEntries(this.#claims);
 		if (this.#iss !== undefined) payload.iss = this.#iss;
 		if (this.#sub !== undefined) payload.sub = this.#sub;
@@ -207,8 +238,11 @@ export class SignJWT {
 
 		scanPayloadForSensitiveData(payload, this.#allowedClaims);
 
-		return new CompactSign(encodeUTF8(JSON.stringify(payload)))
+		const json = JSON.stringify(payload);
+		assertPayloadIsVerifiable(payload, json, "SignJWT");
+		const token = await new CompactSign(encodeUTF8(json))
 			.setProtectedHeader({ alg: key.algorithm, typ: this.#typ })
 			.sign(key.key as Parameters<CompactSign["sign"]>[0]);
+		return assertTokenIsVerifiable(token, "SignJWT");
 	}
 }

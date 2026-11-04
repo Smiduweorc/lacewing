@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { JWTError } from "../../../src/util/errors.js";
 import { refusal } from "../../helpers.js";
-import { scanPayloadForSensitiveData } from "../../../src/lib/payload_hygiene.js";
+import { claimPathKey, scanPayloadForSensitiveData } from "../../../src/lib/payload_hygiene.js";
 
 test("[LW-payload.1] sensitive claim names are rejected", () => {
 	const payloads = [
@@ -104,10 +104,57 @@ test("[LW-payload] errors name the claim but never echo its value", () => {
 test("unsafeAllowClaim-style waivers skip the whole subtree", () => {
 	assert.doesNotThrow(() =>
 		scanPayloadForSensitiveData(
-			{ passwordHint: "favorite color", meta: { note: "ok" } },
-			new Set(["passwordHint"])
+			{ passwordHint: { secret: "favorite color" }, meta: { note: "ok" } },
+			new Set([claimPathKey(["passwordHint"])])
 		)
 	);
+});
+
+test("[LW-payload.1] a waived nested field does not waive its siblings", () => {
+	const waived = new Set([claimPathKey(["profile", "passwordHint"])]);
+	assert.doesNotThrow(() =>
+		scanPayloadForSensitiveData({ profile: { passwordHint: "favorite color", name: "x" } }, waived)
+	);
+	assert.throws(
+		() => scanPayloadForSensitiveData({ profile: { passwordHint: "favorite color", password: "x" } }, waived),
+		refusal("PAYLOAD_HYGIENE_VIOLATION")
+	);
+});
+
+test("[LW-payload.1] array elements add no segment to a waiver path", () => {
+	assert.doesNotThrow(() =>
+		scanPayloadForSensitiveData(
+			{ items: [{ apiKey: "a" }, { apiKey: "b" }] },
+			new Set([claimPathKey(["items", "apiKey"])])
+		)
+	);
+});
+
+test("[LW-payload.1] the refusal names the waiver path to write", () => {
+	assert.throws(
+		() => scanPayloadForSensitiveData({ profile: { settings: { apiKey: "x" } } }),
+		(error: unknown) =>
+			error instanceof JWTError &&
+			error.message.includes("unsafeAllowClaim(\"profile\", \"settings\", \"apiKey\")")
+	);
+});
+
+// Found by the v2.0.1 adversarial review: substring matching read `ssn` in
+// `businessName` and `token` in `tokenizer`.
+test("[LW-payload.1] names that only contain a fragment mid-word pass", () => {
+	for (const name of ["businessName", "classNumber", "glassNode", "tokenizer", "harassment", "at_hash", "secretary_id"]) {
+		assert.doesNotThrow(() => scanPayloadForSensitiveData({ [name]: 1 }), `rejected ${name}`);
+	}
+});
+
+test("[LW-payload.1] fragments are caught as words in any casing or separator", () => {
+	for (const name of [
+		"apiKey", "api_key", "API-Key", "APIKey", "apikeys", "accesstoken", "refreshTokens",
+		"userPassword", "passwordHash", "client_secret", "SSN", "user_ssn", "cvvCode",
+		"socialSecurityNumber", "session_token_hash",
+	]) {
+		assert.throws(() => scanPayloadForSensitiveData({ [name]: 1 }), refusal("PAYLOAD_HYGIENE_VIOLATION"), name);
+	}
 });
 
 // --- heuristic precision (issue #14) -------------------------------------
@@ -169,4 +216,24 @@ test("[LW-payload.1] standard OAuth metadata claims are not sensitive names", ()
 	// The fragment still bites where it should.
 	assert.throws(() => scanPayloadForSensitiveData({ access_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 	assert.throws(() => scanPayloadForSensitiveData({ refresh_token: "x" }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+});
+
+// Found in the second v3 audit: only strings were checked for card numbers
+// and nested tokens.
+test("[LW-payload.2] a card number written as a JSON number is refused", () => {
+	for (const value of [4111111111111111, 5555555555554444, 378282246310005]) {
+		assert.throws(() => scanPayloadForSensitiveData({ note: value }), refusal("PAYLOAD_HYGIENE_VIOLATION"), String(value));
+		assert.throws(() => scanPayloadForSensitiveData({ list: [{ n: value }] }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	}
+	for (const value of [4111111111111112, 755193776567357, 42, 0, -4111111111111111, 1.5, Number.MAX_SAFE_INTEGER]) {
+		assert.doesNotThrow(() => scanPayloadForSensitiveData({ note: value }), String(value));
+	}
+});
+
+test("[LW-payload.2] a compact JWE inside a payload is refused like a JWS", () => {
+	const header = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwidHlwIjoiYXQrand0In0";
+	const jwe = `${header}..AQIDBAUGBwgJCgsM.bdHiT7GuqmqaUn1NqL_wq2fuwY7nP1OIcJfggzEHJs2k.LxLVM5zPAQsVGmTpNyHD5A`;
+	assert.throws(() => scanPayloadForSensitiveData({ upstream: jwe }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	assert.throws(() => scanPayloadForSensitiveData({ upstream: jwe.replace("..", ".c2VjcmV0X3dyYXBwZWRfa2V5.") }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
+	assert.doesNotThrow(() => scanPayloadForSensitiveData({ host: "a.b.c.d.e" }), "five dotted words are not a JWE");
 });

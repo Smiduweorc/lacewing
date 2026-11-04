@@ -19,12 +19,14 @@ import { compactVerify } from "jose";
 import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
+import { MAX_TOKEN_LENGTH } from "../lib/limits.js";
 import { parseJsonObject } from "../lib/json.js";
 import { validateHeader } from "../lib/headers.js";
 import { validateClaims } from "../lib/claims.js";
 import { findAlgorithm } from "../lib/algorithms.js";
 import { validateHMACSecret } from "../lib/entropy.js";
-import { buildRevocationContext } from "../revocation/store.js";
+import { assertNotRevoked } from "../revocation/store.js";
+import { isProfile } from "./profile.js";
 import {
 	isLacewingKey,
 	type ExpectedJwtProfile,
@@ -33,9 +35,6 @@ import {
 	type ResolvedVerificationKey,
 	type VerifiedJwt,
 } from "../types.js";
-
-// Bounded before any parsing so garbage can't allocate unboundedly.
-const MAX_TOKEN_LENGTH = 16384;
 
 function parseSegmentJson(bytes: Uint8Array, what: string): Record<string, unknown> {
 	return parseJsonObject(decodeUTF8(bytes), what);
@@ -86,7 +85,11 @@ async function resolveKey(
  *   issuer: "https://auth.example.com",
  *   audience: "https://api.example.com",
  *   algorithms: ["EdDSA"],
- *   keys: createRemoteJWKSet("https://auth.example.com/jwks"),
+ *   keys: createRemoteJWKSet("https://auth.example.com/jwks", {
+ *     cacheTtlSeconds: 300,
+ *     cooldownSeconds: 30,
+ *     timeoutMs: 2000,
+ *   }),
  *   maxTokenAge: "10m",
  * });
  *
@@ -97,6 +100,9 @@ export async function jwtVerify(
 	token: string,
 	profile: ExpectedJwtProfile
 ): Promise<VerifiedJwt> {
+	if (!isProfile(profile)) {
+		throw new TypeError("jwtVerify needs a profile built by defineProfile(); a hand-built or copied one skips its checks");
+	}
 	if (typeof token !== "string" || token.length === 0) {
 		throw new JWTError("JWT_INVALID", "Token must be a non-empty string");
 	}
@@ -133,32 +139,7 @@ export async function jwtVerify(
 
 	// Revocation last (LW-rev.3): only signed, claims-valid tokens ever
 	// reach the store, so forged input can't probe or flood it.
-	if (profile.revocation !== undefined) {
-		if (typeof payload.jti !== "string") {
-			throw new JWTError(
-				"MISSING_CLAIM",
-				"This profile has a revocation store but the token carries no jti",
-				{ claim: "jti" }
-			);
-		}
-		let revoked: boolean;
-		try {
-			revoked = await profile.revocation.isRevoked(buildRevocationContext(payload));
-		} catch (cause) {
-			if (profile.unsafeFailOpenOnRevocationError === true) {
-				revoked = false;
-			} else {
-				throw new JWTError(
-					"REVOCATION_CHECK_FAILED",
-					"Revocation store errored - failing closed (LW-rev.4)",
-					{ cause }
-				);
-			}
-		}
-		if (revoked) {
-			throw new JWTError("JWT_REVOKED", "Token has been revoked");
-		}
-	}
+	await assertNotRevoked(payload, profile);
 
 	return { header, payload: payload as JwtPayLoad } as VerifiedJwt;
 }

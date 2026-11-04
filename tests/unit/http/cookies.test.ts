@@ -117,3 +117,21 @@ test("readTokenCookie refuses a shadowed cookie rather than guessing", () => {
 	// One occurrence is still fine, neighbours and all.
 	assert.equal(readTokenCookie(`other=1; __Host-token=${TOKEN}; last=2`), TOKEN);
 });
+
+// Found in the second v3 audit: browsers match cookie prefixes regardless of
+// case, so "__HOST-t" with a Domain skipped the __Host- rules and was then
+// silently dropped by the browser.
+test("[LW-http.1] the __Host- rules apply to the prefix in any case", () => {
+	for (const name of ["__HOST-t", "__host-t", "__HoSt-t"]) {
+		assert.throws(() => buildTokenCookie("abc", { name, domain: "example.com" }), TypeError, name);
+		assert.throws(() => buildTokenCookie("abc", { name, path: "/api" }), TypeError, name);
+		assert.doesNotThrow(() => buildTokenCookie("abc", { name }));
+	}
+});
+
+test("[LW-http.1] a cookie path with a control character is refused", () => {
+	for (const path of ["/a\r\nSet-Cookie: x=1", "/a\u0000", "/a\u007f", "/a;b"]) {
+		assert.throws(() => buildTokenCookie("abc", { name: "t", path }), TypeError, JSON.stringify(path));
+	}
+	assert.doesNotThrow(() => buildTokenCookie("abc", { name: "t", path: "/api/v1" }));
+});

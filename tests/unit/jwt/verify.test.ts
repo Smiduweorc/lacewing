@@ -174,7 +174,7 @@ test("[LW-rev] a revocation profile requires tokens to carry a jti", async () =>
 
 test("custom claim validators run through the verify path", async () => {
 	const profile = makeProfile({
-		claimValidators: {
+		unsafeClaimValidators: {
 			scope: (value) => {
 				if (value !== "read") throw new Error("nope");
 			},

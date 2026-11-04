@@ -45,10 +45,14 @@ export function buildTokenCookie(token: string, options: TokenCookieOptions = {}
 		throw new TypeError("SameSite must be \"Lax\" or \"Strict\" - \"None\" is not supported");
 	}
 	const path = options.path ?? "/";
-	if (path.includes(";") || !path.startsWith("/")) {
+	// RFC 6265 path-value: any CHAR except controls and ";".
+	const hasControl = [...path].some((c) => c.charCodeAt(0) < 0x20 || c.charCodeAt(0) === 0x7f);
+	if (!path.startsWith("/") || path.includes(";") || hasControl) {
 		throw new TypeError("Invalid cookie path");
 	}
-	if (name.startsWith("__Host-")) {
+	// Browsers match the prefixes case-insensitively (RFC 6265bis 4.1.3), so
+	// "__HOST-t" gets the __Host- rules too, or the browser drops the cookie.
+	if (name.toLowerCase().startsWith("__host-")) {
 		if (options.domain !== undefined) {
 			throw new TypeError("__Host- cookies must not set a Domain");
 		}

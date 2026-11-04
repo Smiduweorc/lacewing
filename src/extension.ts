@@ -11,6 +11,11 @@
  * any format that carries its own key, so each format owns its header
  * rules.
  *
+ * `isVerificationProfile` answers whether a value is a profile
+ * `defineProfile` built, so a package that takes your profile can refuse a
+ * hand-built or copied one when it is configured rather than at the first
+ * request, where `jwtVerify` would throw.
+ *
  * `parseJsonObject` is the strict JSON reading a token's header and payload
  * get: a plain object, and no member name twice at any depth. A format that
  * reads JSON out of a JWS reads it the same way, so the two cannot disagree
@@ -21,3 +26,4 @@ export { getAlgorithmProperties, type AlgorithmInfo } from "./lib/algorithms.js"
 export { parseJsonObject } from "./lib/json.js";
 export { parseDuration } from "./lib/duration.js";
 export { readHeaderValue, type HeaderSource } from "./http/source.js";
+export { isProfile as isVerificationProfile } from "./jwt/profile.js";

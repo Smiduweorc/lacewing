@@ -15,8 +15,10 @@ const KID_MAX_LENGTH = 128;
 const KID_CHARSET = /^[A-Za-z0-9._:-]+$/;
 
 // Never followed / never honored (§3.6, §3.10) plus `crit`, since we
-// implement no extensions and RFC 7515 requires rejecting unknown ones.
-const FORBIDDEN_PARAMS = ["jku", "x5u", "jwk", "x5c", "x5t", "zip", "crit"] as const;
+// implement no extensions and RFC 7515 requires rejecting unknown ones. The
+// JWE header refuses the same set; there `zip: DEF` is also a decompression
+// bomb.
+export const FORBIDDEN_PARAMS = ["jku", "x5u", "jwk", "x5c", "x5t", "x5t#S256", "zip", "crit"] as const;
 
 /**
  * Sanitize an untrusted `kid` before it is used for key lookup (§3.10):

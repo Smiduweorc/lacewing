@@ -5,10 +5,9 @@
 import { JWTError } from "./errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
+import { MAX_TOKEN_LENGTH } from "../lib/limits.js";
 import { parseJsonObject } from "../lib/json.js";
 import type { JwtHeader, JwtPayLoad, UntrustedJwt } from "../types.js";
-
-const MAX_TOKEN_LENGTH = 16384;
 
 function parseSegment(segment: string, what: string): Record<string, unknown> {
 	return parseJsonObject(decodeUTF8(decodeBase64url(segment)), what);

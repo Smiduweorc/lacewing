@@ -12,6 +12,7 @@ import { JWTError } from "../util/errors.js";
 import { findAlgorithm, isKnownAlgorithmName, type AlgorithmInfo } from "../lib/algorithms.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { validateHMACSecret } from "../lib/entropy.js";
+import { vouchForKeySource } from "./trusted.js";
 import type {
 	JwtHeader,
 	KeySource,
@@ -131,12 +132,12 @@ export function validateJwksShape(jwks: unknown): StaticJWK[] {
 /** Create a {@link KeySource} backed by a static JWKS document. */
 export function createLocalJWKSet(jwks: StaticJWKS): KeySource {
 	const keys = validateJwksShape(jwks);
-	return {
+	return vouchForKeySource({
 		getVerificationKey(
 			header: JwtHeader,
 			allowedAlgorithms: readonly AlgorithmInfo[]
 		): Promise<ResolvedVerificationKey> {
 			return resolveFromJwks(keys, header, allowedAlgorithms);
 		},
-	};
+	});
 }

@@ -53,6 +53,16 @@ const FIXTURES: Array<{ file: string; code: string; why: string }> = [
 		code: "TS2345",
 		why: "a claim refusal must name its claim",
 	},
+	{
+		file: "refresh-requires-revocation.ts",
+		code: "TS2345",
+		why: "a refresh-token profile must name a revocation store or opt out by name",
+	},
+	{
+		file: "remote-jwks-requires-numbers.ts",
+		code: "TS2345",
+		why: "a remote JWKS must name its cache, cooldown and timeout numbers",
+	},
 ];
 
 const tsc = spawnSync(

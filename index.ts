@@ -39,6 +39,7 @@ export {
 	ACCESS_TOKEN_TYP,
 	REFRESH_TOKEN_TYP,
 	type TokenProfileOptions,
+	type RefreshTokenProfileOptions,
 } from "./src/cookbook/access-refresh.js";
 
 // Keys
@@ -53,10 +54,15 @@ export { exportKeyJWK, exportKeyPEM } from "./src/key/export.js";
 // JWKS key sources
 export { createLocalJWKSet } from "./src/jwks/local.js";
 export { createRemoteJWKSet, type RemoteJWKSetOptions } from "./src/jwks/remote.js";
+export { unsafeCustomKeySource } from "./src/jwks/trusted.js";
 
 // Revocation
 export { buildRevocationContext } from "./src/revocation/store.js";
-export { MemoryRevocationStore } from "./src/revocation/memory.js";
+export { MemoryRevocationStore, type MemoryRevocationStoreOptions } from "./src/revocation/memory.js";
+
+// What Lacewing reports instead of logging, and the clock it reads
+export type { LacewingEvent, OnEvent } from "./src/util/events.js";
+export type { Clock } from "./src/util/clock.js";
 
 // HTTP transport helpers (the paved road: no localStorage, ever)
 export {

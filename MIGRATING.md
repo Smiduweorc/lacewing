@@ -1,9 +1,94 @@
+# Migrating from 2.x to 3.0
+
+3.0 makes every remaining way to loosen a check carry an `unsafe` name you
+can grep for, makes the caller name the numbers only the caller knows, and
+fixes two v2 behaviours that did not do what the docs said. Each row is a
+build or runtime error in 3.0 until you change it.
+
+| 2.x | 3.0 |
+| --- | --- |
+| `maxTokenAge` above 30 days | add `unsafeAllowLongTokenAge: true` |
+| `maxClockSkew` above 30s (up to 120s) | add `unsafeAllowLargeClockSkew: true`; 120s stays the hard ceiling |
+| `claimValidators: {...}` | rename to `unsafeClaimValidators: {...}` |
+| `keys: { getVerificationKey }` (custom source) | `keys: unsafeCustomKeySource({ getVerificationKey })` |
+| `new SignJWT(typ, { maxLifetime })` or `EncryptJWT` above 30 days | add `unsafeAllowLongLifetime: true` |
+| `createRemoteJWKSet(url)` or `keys: { jwksUri }` | name `cacheTtlSeconds`, `cooldownSeconds` and `timeoutMs`; 2.x used 300, 30 and 5000 |
+| `cooldownSeconds: 0` | at least 1; 0 let every unknown `kid` trigger a fetch |
+| `staleWhileErrorSeconds` above 86400 | at most 86400 |
+| `refreshTokenProfile({...})` with no `revocation` | pass a store, or `unsafeNoRevocation: true` |
+| `unsafeAllowClaim("profile")` to get past one nested field | `unsafeAllowClaim("profile", "field")` waives only that field |
+| a profile, key or key source built by hand or copied with `{ ...x }` | build it with `defineProfile`, `importKey` and friends; copies throw `TypeError` |
+| `keys: source` after `unsafeCustomKeySource(source)` | pass the wrapper it returns, not the original object |
+| `notBefore` at or after `expiresIn` | throws `TypeError`; such a token could never be valid |
+| signing a token `jwtVerify` would refuse (a `__proto__` member, an `iss`/`sub`/`jti` over 1024 characters, a token over 16384) | throws `TypeError` at `.sign()`/`.encrypt()` instead of failing at verify time |
+| an RSA key under 2048 bits from PEM or a `CryptoKey` | `KEY_TYPE_MISMATCH` at import (JWKs already were) |
+| an encryption key of the wrong family or curve (an ECDSA key for `ECDH-ES`, X25519, RSA-PSS for `RSA-OAEP-256`) | `KEY_TYPE_MISMATCH` at import |
+| a `dir` key whose size fits none of the profile's `contentEncryptionAlgorithms` | `TypeError` from `defineDecryptionProfile` |
+| `RevocationStore.isAnyRevoked` | removed; Lacewing never called it |
+
+The first four rows apply to both `defineProfile` and
+`defineDecryptionProfile`. Sources from `createLocalJWKSet` and
+`createRemoteJWKSet` need no wrapper. A single-argument `unsafeAllowClaim`
+still waives the whole claim, as before.
+
+Behaviour that changed without an API change:
+
+- **The stale-while-error window starts when the cached keys expire**, not
+  when they were fetched. In 2.x an endpoint sending `max-age=3600` or more
+  got no stale serving at all with the default 3600s window. Keys can now be
+  trusted for at most the cache lifetime plus the window.
+- **The payload scanner matches names by word.** `businessName`,
+  `classNumber` and `tokenizer` now pass; `apiKey`, `accesstoken` and
+  `passwordHash` are still refused. Waivers you added for the first kind can
+  go.
+- **`newRefreshToken()` caps lifetimes at 30 days**, down from 90, to match
+  `refreshTokenProfile`'s default `maxTokenAge`. A 90-day refresh token was
+  refused at day 30 anyway.
+- **Keys, profiles and key sources are unforgeable.** In 2.x an object
+  literal with `__brand: "LacewingKey"` signed with whatever bytes it held,
+  and `jwtVerify` accepted any object shaped like a profile, including one
+  with a decade of accepted age. Both are refused now.
+- **Binary HMAC secrets that repeat a short pattern** (all zeros, `fill(7)`)
+  throw `ENTROPY_CHECK_FAILED`, from `importKey`, a JWKS and custom sources.
+- **A `now` clock that returns NaN or a non-number throws** on every read.
+  Every comparison with NaN is false, so it would have let expired tokens
+  through.
+- **`x5t#S256` in a header rejects the token**, like `x5t` already did.
+- **Cookie prefixes are matched in any case**: `__HOST-t` gets the `__Host-`
+  rules, as browsers apply them. A cookie path with a control character
+  throws.
+- **The scanner also refuses card numbers written as JSON numbers, and
+  compact JWEs.**
+- **New and optional:** an `onEvent` listener on profiles and
+  `createRemoteJWKSet`, and a `now` clock option everywhere time is read.
+- **`MemoryRevocationStore` revokes by subject and session too**:
+  `revokeSubject(sub, until)` and `revokeSession(sid, until)`. Revoking the
+  same `jti` twice keeps the later expiry instead of the last one written.
+
+## For packages that take a Lacewing profile
+
+A package that accepts your profile (Antlion, for one) used to check its
+shape. A shape is now worthless: `jwtVerify` throws `TypeError` for any
+profile `defineProfile` didn't build. Check provenance where the package is
+configured, so a bad profile fails at setup rather than on the first request:
+
+```ts
+import { isVerificationProfile } from "lacewing/extension";
+
+if (!isVerificationProfile(options.token)) {
+  throw new TypeError("token must be a profile from defineProfile()");
+}
+```
+
+Tests that hand-rolled a `KeySource` wrap it in `unsafeCustomKeySource`, and
+`claimValidators` is `unsafeClaimValidators`. Raise the peer range to `^3.0.0`.
+
 # Migrating from 1.x to 2.0
 
 2.0 breaks two things on purpose: how legacy `RS*` algorithms are enabled, and
 the error classes. Each section says what to change.
 
-## Legacy algorithms are values you pass, not a switch you flip
+### Legacy algorithms are values you pass, not a switch you flip
 
 In 1.x, `enableLegacyRS256()` added `RS256` to a registry shared by the whole
 process. Every profile, `importKey` call and package in that process could
@@ -77,7 +162,7 @@ the process-wide side effect its doc comment warned about, go away:
 5. The access-token profile's own `algorithms` is unaffected unless it lists
    `"RS256"`; if it does, list `LEGACY_RS256` instead.
 
-## One error class: `JWTError` with a `code`
+### One error class: `JWTError` with a `code`
 
 The sixteen 1.x subclasses are gone. Every refusal is now a `JWTError`, and
 `error.code` says which one it was. The codes themselves are the strings 1.x

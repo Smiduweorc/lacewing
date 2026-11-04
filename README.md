@@ -1,22 +1,22 @@
 # Lacewing
 ![Logo](./assets/logo.png)
 
-**Lacewing is an opinionated JWT library that makes common JWT security mistakes impossible by construction.**
+**Lacewing is an opinionated JWT library for people who want the safe way to be the only easy way, and the unsafe way to be something you have to type out loud.**
 
-Instead of exposing low-level primitives and trusting you to compose them correctly, Lacewing provides secure verification profiles, safe defaults, mandatory claim validation, built-in revocation support, secure cookie helpers, and a curated algorithm set. Everything [RFC 8725 (JWT Best Current Practices)](https://datatracker.ietf.org/doc/html/rfc8725) says an application MUST or SHOULD do is enforced by the type system, enforced at runtime, or impossible to express, except where only your application has the facts: keeping two of your own profiles apart (give each kind of token its own `typ`), and choosing a strong HMAC secret (use `generateSecret()`; the entropy check is a heuristic).
+It signs, verifies and encrypts JWTs through profiles you define once, with a short algorithm list, required claim checks, a JWKS client, revocation and cookie helpers. Every RFC 8725 requirement a library can check is checked, and the build fails if one has no passing test ([Evidence](./guides/evidence.md)). What it can't check is under [what only you can decide](#what-only-you-can-decide). The cryptography is [jose](https://github.com/panva/jose)'s; the policy is ours.
 
-**The signature maths is not ours, and that shows in the RFC compliance.** Lacewing enforces the *policy* RFC 8725 asks for. The ECDSA and EdDSA signing and verifying, curve point checks, and nonce generation are done by [jose](https://github.com/panva/jose) on top of Node's WebCrypto (OpenSSL). Lacewing does not control or re-check them. For example, ECDSA nonces are whatever Node's OpenSSL build produces (randomised, not RFC 6979 deterministic), and low-level primitive conformance is only as good as your Node version. The compliance suite tests that Lacewing calls these primitives correctly, not the primitives themselves.
+One runtime dependency (`jose`), nothing happens at import time, ESM only, Node 24 or later.
 
-**Batteries loaded (RFC 8725).** Out of the box:
+## Lacewing is not for you if you
 
-- **Verification profiles**: the only way to verify; `typ`, issuer, audience, algorithm allowlist and key source are structurally mandatory
-- **Remote JWKS** with caching, rotation handling, `kid` hygiene, and a *bounded* stale-serving window when the endpoint goes down
-- **Token revocation**: unique `jti` on every token, pluggable `RevocationStore`, in-memory store included
-- **Secure cookie + bearer helpers**: `HttpOnly; Secure; SameSite` enforced, strict RFC 6750 parsing
-- **Access/refresh token presets**: mutually exclusive by `typ`, shipped rather than left as homework
-- **Encrypted JWTs (JWE)** with the same profile discipline
-- **Payload hygiene scanning** at sign time (passwords, card numbers, PEM keys never leave in plaintext)
-- **Typed errors** with machine-readable codes and no attacker-facing oracle
+- **want to decode a token and decide later whether to trust it.** There is no `decode()` on the verify path. `unsafeDecode` exists for debugging, and its result does not type-check where a verified token is expected.
+- **need `alg: none`, `RS256` as a bare string, `RSA1_5` or `PBES2`.** Not available. Legacy `RS*` comes in through `lacewing/legacy/rsa`, by name, per profile.
+- **want a token with no `iss`, no `aud` or no `exp`** without saying so in code. You can, through `unsafeAllowMissing*`, and your reviewer will see it.
+- **want the library to pick your cache TTLs and timeouts.** Your JWKS endpoint, your rotation schedule, your latency budget. You pick.
+- **need tokens bound to a client.** Lacewing does bearer tokens. DPoP is [Antlion](https://github.com/Smiduweorc/antlion), which wraps a Lacewing profile; mTLS-bound tokens are nobody's here.
+- **run on CommonJS or Node older than 24.**
+
+[Boundaries](./guides/boundaries.md) has the full list, with where each excluded thing goes instead.
 
 ## Security advisories
 
@@ -26,469 +26,132 @@ upgrade**: it lists every advisory with its affected versions, the release that
 fixes it, and a workaround. To report a vulnerability, see
 [SECURITY.md](./SECURITY.md).
 
-## Requirements
+## How it works
 
-- Node **>= 24**
-- **ESM** only
-- **TypeScript-first** (full types shipped; the branded `VerifiedJwt`/`UntrustedJwt` types are part of the security model)
+Everything goes through a profile. You define one per kind of token, once: the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, the key source bound to that issuer, and how old a token may be. `jwtVerify(token, profile)` is the only verify path, and it either returns a `VerifiedJwt` or throws a `JWTError` whose `code` says why. What follows from that:
 
-## Installation
-
-```bash
-npm install lacewing
-```
-
-[Getting started](./GETTING-STARTED.md) walks through adopting Lacewing in a
-real service: keys, profiles, transport, refresh tokens, revocation, key
-rotation, and a migration path from `jsonwebtoken`. Coming from Lacewing 1.x,
-[Migrating](./MIGRATING.md) lists what 2.0 breaks and what to write instead.
-The rest of this README is the pitch and the reference.
+- **The header never chooses.** The algorithm, the key and the `typ` are the profile's; a token can only fail to match them.
+- **Profiles and keys come only from Lacewing's factories** (`defineProfile`, `importKey` and friends). A hand-built or copied one is refused, so nothing skips the checks that made the real one.
+- **Loosening is spelled out.** Past its bound, every way to relax a check is named `unsafe*` or `LEGACY_*` (the [list](#the-escape-hatches-all-of-them)).
+- **Signing refuses a payload verifying would reject on shape or size**, so a token doesn't first fail when it is used.
 
 ## Quick start
 
-The complete lifecycle (generate a key, sign, define a profile once, verify everywhere):
+1. Install it:
 
-```ts
-import { SignJWT, defineProfile, jwtVerify, generateKeyPair } from "lacewing";
+   ```bash
+   npm install lacewing
+   ```
 
-const { publicKey, privateKey } = await generateKeyPair(); // EdDSA by default
+2. Generate a key, sign, define a profile once, verify:
 
-const token = await new SignJWT("at+jwt")
-	.issuer("https://auth.example.com")
-	.audience("https://api.example.com")
-	.subject("user-42")
-	.expiresIn("10m")
-	.sign(privateKey);
+   ```ts
+   import { SignJWT, defineProfile, jwtVerify, generateKeyPair } from "lacewing";
 
-const profile = defineProfile({
-	typ: "at+jwt",
-	issuer: "https://auth.example.com",
-	audience: "https://api.example.com",
-	algorithms: ["EdDSA"],
-	keys: publicKey,
-	maxTokenAge: "10m",
-});
+   const { publicKey, privateKey } = await generateKeyPair(); // EdDSA by default
 
-const { payload } = await jwtVerify(token, profile); // VerifiedJwt: every check passed
+   const token = await new SignJWT("at+jwt")
+   	.issuer("https://auth.example.com")
+   	.audience("https://api.example.com")
+   	.subject("user-42")
+   	.expiresIn("10m")
+   	.sign(privateKey);
+
+   const profile = defineProfile({
+   	typ: "at+jwt",
+   	issuer: "https://auth.example.com",
+   	audience: "https://api.example.com",
+   	algorithms: ["EdDSA"],
+   	keys: publicKey,
+   	maxTokenAge: "10m",
+   });
+
+   const { payload } = await jwtVerify(token, profile); // VerifiedJwt: every check passed
+   ```
+
+3. In production, point the profile at your issuer's JWKS instead of one key ([Verifying](./guides/verifying.md)), and keep browser tokens in an `HttpOnly` cookie ([Transport](./guides/transport.md)).
+
+`npm run demo` runs the main flows end to end, every refusal a real thrown error.
+
+## Documentation
+
+| Guide | What it covers |
+| --- | --- |
+| [Getting started](./GETTING-STARTED.md) | Adopting Lacewing in a real service, end to end, and moving off `jsonwebtoken` |
+| [Verifying](./guides/verifying.md) | Remote and local JWKS, pinned keys, custom key sources, Ed25519's two names, legacy `RS*` |
+| [Signing and encrypting](./guides/signing.md) | What `SignJWT` refuses, the payload scanner, HMAC, JWE |
+| [Transport](./guides/transport.md) | Cookies for browsers, bearer headers for services, and what both refuse |
+| [Lifetimes and revocation](./guides/lifetimes-and-revocation.md) | Access vs refresh, age vs lifetime, revoking, and why revocation isn't replay protection |
+| [Errors, events and time](./guides/operations.md) | Error codes, `onEvent`, the `now` clock, `unsafeDecode` |
+| [Building on Lacewing](./guides/extension.md) | `lacewing/extension`, for packages that add a check on top |
+| [Boundaries](./guides/boundaries.md) | What Lacewing owns, what it never does, and where that goes |
+| [Evidence](./guides/evidence.md) | The requirement gate, whose code does the crypto, and the foreign golden vectors |
+| [Migrating](./MIGRATING.md) | What 3.0 and 2.0 break, and what to write instead |
+| [Advisories](./ADVISORIES.md), [Security](./SECURITY.md), [Changelog](./CHANGELOG.md) | Published advisories, reporting a vulnerability, every release |
+
+The API reference is generated by TypeDoc (`npm run docs`), with every page above included.
+
+## Where it sits
+
+| Package | Question it answers |
+| --- | --- |
+| **Lacewing** | **Is this token signed by who it claims, unexpired, and meant for me?** |
+| [Antlion](https://github.com/Smiduweorc/antlion) | Is the one presenting it the one it was issued to, and is this request the one they signed? |
+
+## The escape hatches, all of them
+
+Every way to loosen one of Lacewing's checks past its bound is spelled
+`unsafe*` or `LEGACY_*`, so this is your code review:
+
+```bash
+grep -rnE "unsafe[A-Z]|LEGACY_" .
 ```
 
-A runnable version of everything in this README ships with the repo: `npm run demo`.
-
-## Concepts
-
-**Profiles are the central abstraction.** Configuration is something you create once, not something every endpoint reinvents. A profile names the expected `typ`, the trusted issuer, the required audience, an explicit algorithm allowlist, and the key source bound to that issuer. `jwtVerify(token, profile)` is the *only* verify path: there is no `decode()`, no `ignoreExpiration`, no "accept whatever the header says" mode. If any check fails you get a `JWTError` whose `code` says why (`JWT_EXPIRED`, `ALGORITHM_NOT_ALLOWED`, `JWT_CLAIM_VALIDATION_FAILED`, ...) and no partial result.
-
-**Built on jose.** Lacewing does not reimplement cryptography. It is a hardened policy layer over [jose](https://github.com/panva/jose) (the audited, maintained, runtime-portable JOSE implementation), so the novel code is the policy, not the crypto. Tokens Lacewing signs or encrypts are standard JWTs/JWEs that jose (and any other conforming implementation) can consume, and the conformance suite proves it against the RFC 7515/7516/7519 worked examples plus tokens produced by OpenSSL and python-cryptography.
-
-## Usage
-
-### Verify: a profile backed by a remote JWKS
-
-This is what real deployments should look like, so it's the first example:
-
-```ts
-import { defineProfile, jwtVerify, createRemoteJWKSet } from "lacewing";
-
-const accessToken = defineProfile({
-	typ: "at+jwt",
-	issuer: "https://auth.example.com",
-	audience: "https://api.example.com",
-	algorithms: ["EdDSA"],
-	keys: createRemoteJWKSet("https://auth.example.com/jwks"), // cached, rate-limited, rotation-aware, HTTPS-only
-	maxTokenAge: "10m",
-});
-
-const { payload } = await jwtVerify(token, accessToken); // VerifiedJwt: every check passed
-```
-
-**When the endpoint goes down**, the last good keys keep serving for a bounded
-window (1h by default) and then verification **fails closed**. The bound is the
-whole point: keys that go stale forever mean a key you rotated out *because it
-was compromised* stays trusted for exactly as long as an attacker can keep your
-JWKS unreachable. Trade availability against freshness explicitly:
-
-```ts
-createRemoteJWKSet("https://auth.example.com/jwks", {
-	cacheTtlSeconds: 300,         // fallback when the response sends no Cache-Control
-	cooldownSeconds: 30,          // floor between fetch attempts
-	staleWhileErrorSeconds: 3600, // how long a dead endpoint may coast; 0 = never
-});
-```
-
-Two more things that endpoint does not get to do. The response is read under a
-hard byte budget, checked against `Content-Length` and again on every chunk, so
-a hostile or broken endpoint cannot stream you out of memory. And symmetric
-(`oct`) entries are refused from a *remote* set: a JWKS endpoint is public, so a
-secret published there is one every reader could **mint** with, not merely
-verify with. A local JWKS may still carry them.
-
-### Verify: keys you already have
-
-Not everyone has a JWKS endpoint to point at. If the issuer handed you a raw
-public key, or you're pinning a single known one, the same `keys` field takes it
-directly. No URL, no fetch. `importKey` reads a PEM (SPKI public key), a JWK, or
-a `CryptoKey`, and binds it to exactly one algorithm:
-
-```ts
-import { defineProfile, importKey } from "lacewing";
-
-const publicKey = await importKey(spkiPem, "ES256"); // PEM string, JWK, or CryptoKey
-
-const profile = defineProfile({
-	typ: "at+jwt",
-	issuer: "https://auth.example.com",
-	audience: "https://api.example.com",
-	algorithms: ["ES256"],
-	keys: publicKey, // one pinned key, nothing to fetch
-	maxTokenAge: "10m",
-});
-```
-
-Hand it a private key by mistake and it refuses: profiles verify, they don't
-sign, and the error says exactly that. The key's algorithm has to be one you
-allowlisted too, so a key you imported for `ES256` won't quietly slip into an
-`EdDSA`-only profile.
-
-Got a handful of keys but still no endpoint to serve them from? Pass a JWKS
-document straight in, the same shape a `/jwks` URL would return, just inlined:
-
-```ts
-keys: {
-	keys: [
-		{ kty: "OKP", crv: "Ed25519", x: "...", kid: "2024-key" },
-		{ kty: "EC", crv: "P-256", x: "...", y: "...", kid: "2025-key" },
-	],
-},
-```
-
-Selection is exact: the token's `kid` (and its algorithm's key type and curve)
-has to single out one key. Two keys that both match with no `kid` to tell them
-apart is treated as your mistake, not something to guess at. The same goes for
-a key with no `alg`: if the profile allows several algorithms that key could
-serve (say `PS256` and `PS512` for one RSA key), it is refused rather than
-used under all of them. Set `alg` on the key. EC and OKP keys are exempt,
-because their curve already names the algorithm.
-
-And if your keys live somewhere less ordinary (an HSM, a secrets manager, a
-database), anything with a `getVerificationKey(header)` method is a valid `keys`
-value. That's the escape hatch; the two built-in sources are just the ones
-you'll reach for most. It is still held to the same rules: the `alg` it returns
-must be the token's, and a raw HMAC secret it returns goes through the same
-strength check as `importKey`.
-
-### Sign
-
-`typ` is a constructor argument, and `.sign()` refuses to run without
-`issuer`, `audience` and `expiresIn` (waivable only via grep-loud
-`unsafeAllowMissing*` calls). Every token gets a unique `jti`, lifetimes are
-capped (default 1h), and a hygiene scanner rejects payloads that contain
-things like passwords, card numbers, PEM keys, or other JWTs, because **a
-JWS payload is base64url-encoded plaintext, readable by anyone who holds the
-token**. Never put secrets in it.
-
-```ts
-import { SignJWT, generateKeyPair } from "lacewing";
-
-const { publicKey, privateKey } = await generateKeyPair(); // EdDSA by default
-
-const token = await new SignJWT("at+jwt")
-	.issuer("https://auth.example.com")
-	.audience("https://api.example.com")
-	.subject("user-42")
-	.claim("scope", "read")
-	.expiresIn("10m")
-	.sign(privateKey);
-```
-
-A note on HMAC (`HS256/384/512`): it is supported, but every verifier of an
-HMAC token holds the same secret and can therefore also **mint** them. For
-anything beyond a single service, use asymmetric keys + JWKS. HMAC secrets
-must meet the RFC 7518 length floor and are screened by an entropy
-heuristic, so `"my-secret"` will not import, ever. The heuristic catches
-short and low-entropy secrets, not every bad one a human can invent. PLEASE use
-`generateSecret()` and don't hand-write key material. Symmetric keys are
-also refused from a *remote* JWKS: that endpoint is public, so a secret
-published there is one anyone can mint with.
-
-### Transport: the paved road
-
-Do **not** put tokens in `localStorage` or `sessionStorage`: both are
-readable by any script on the page, so one XSS means token theft. Use an
-`HttpOnly` cookie (browsers) or an in-memory bearer token (services):
-
-```ts
-import { setTokenCookie, readTokenCookie, parseBearer } from "lacewing";
-
-setTokenCookie(response.headers, token); // always HttpOnly; Secure; SameSite, weaker is unrepresentable
-const fromCookie = readTokenCookie(request);
-const fromHeader = parseBearer(request); // strict RFC 6750; no query-string tokens, ever
-```
-
-Both readers refuse ambiguity rather than resolving it. `parseBearer` rejects
-the `", "`-joined value `Headers` produces when a request carried two
-`Authorization` headers, and `readTokenCookie` returns `undefined` when the
-cookie name appears twice, the servers disagree about whether the first or the
-last duplicate wins, and cookie shadowing is built on that disagreement.
-
-Both readers take WHATWG `Headers` (or anything carrying them, like `Request`),
-or the raw header string. Node-style frameworks - Express, Fastify, Koa - hand
-you a plain object instead, so convert once at the edge; a shape the readers
-don't accept throws rather than reading as "no token":
-
-```ts
-const headers = new Headers(req.headers as Record<string, string>);
-const fromCookie = readTokenCookie(headers);
-
-res.setHeader("Set-Cookie", buildTokenCookie(token)); // the response side is just a string
-```
-
-### Access vs refresh (the cookbook)
-
-The single most common token-confusion bug is letting a refresh token buy API
-access, or an access token mint new sessions. Lacewing **ships** the two
-profiles rather than leaving them as homework. They are mutually exclusive by
-`typ` (RFC 8725 §3.12), so presenting one where the other is expected fails,
-even with identical keys, claims and audience:
-
-```ts
-import { accessTokenProfile, refreshTokenProfile, newAccessToken } from "lacewing";
-
-const api = accessTokenProfile({          // typ: "at+jwt", 10m default cap
-  issuer: "https://auth.example.com",
-  audience: "https://api.example.com",    // the API
-  algorithms: ["EdDSA"],
-  keys: { jwksUri: "https://auth.example.com/jwks" },
-});
-
-const refresh = refreshTokenProfile({     // typ: "rt+jwt", 30d default cap
-  issuer: "https://auth.example.com",
-  audience: "https://auth.example.com/token", // the auth server, never the API
-  algorithms: ["EdDSA"],
-  keys: privateJwks,
-  revocation,                              // long-lived tokens must be revocable
-});
-
-const token = await newAccessToken()
-  .issuer("https://auth.example.com")
-  .audience("https://api.example.com")
-  .subject("user-42")
-  .expiresIn("10m")
-  .sign(privateKey);
-
-await jwtVerify(token, refresh); // -> JWT_CLAIM_VALIDATION_FAILED (wrong typ)
-```
-
-### Revocation is built-in, not homework
-
-```ts
-import { MemoryRevocationStore } from "lacewing";
-
-const revocation = new MemoryRevocationStore(); // or your Redis/DB adapter (RevocationStore)
-const profile = defineProfile({ /* ...as above... */ revocation });
-
-revocation.revoke(payload.jti, payload.exp); // e.g. on logout
-await jwtVerify(token, profile); // -> JWT_REVOKED
-```
-
-The store is consulted only *after* signature and claims pass, and store
-errors fail closed.
-
-## Advanced
-
-### Age vs lifetime: two different caps
-
-`maxTokenAge` and `maxTokenLifetime` sound alike and do different jobs.
-
-**`maxTokenAge`** (required) bounds how long after issuance a token still works
-*here* (`now - iat`). It is enforced independently of `exp`, so a token minted
-with a decade-long `exp` stops being accepted once it is older than your cap,
-no matter what the issuer wrote.
-
-**`maxTokenLifetime`** (optional) bounds the span the issuer *declared*
- (`exp - iat`). Note what `maxTokenAge` alone does with that decade-long token:
-it accepts it, right up until the age window closes. That is usually fine, since
-the age window is what actually governs. But an `exp` wildly beyond your own
-policy is a misissuance signal, and this refuses it on sight instead of
-tolerating it for the length of the window:
-
-```ts
-const profile = defineProfile({
-	/* ...as above... */
-	maxTokenAge: "10m",     // unusable 10m after iat, whatever exp claims
-	maxTokenLifetime: "1h", // and refuse anything declaring a span beyond 1h
-});
-```
-
-It is opt-in because plenty of legitimate issuers set a generous `exp` and
-expect the verifier's own window to do the limiting.
-
-### Revocation is not replay protection
-
-Be precise about what revocation buys you: it lets you kill a
-token you *know about* (logout, compromise). It does **not** stop replay: a
-valid, non-revoked token that leaks can be replayed by anyone who holds it
-until `exp`. That is the deliberate cost of stateless verification, and no
-JWT library can remove it without becoming a session store.
-
-Your levers, in order of cheapness:
-
-- **Short lifetimes.** The default caps (10m access tokens) exist exactly to
-  shrink the replay window. Prefer shortening `exp` over building state.
-- **Revocation on every logout/refresh**, so a stolen token dies with the
-  session it came from.
-- **A jti-seen cache** when an endpoint must be strictly once-only (e.g. a
-  password-reset action token): every Lacewing token carries a unique `jti`,
-  so you can reject repeats with a `claimValidators` entry backed by a
-  store with the token's remaining TTL:
-
-  ```ts
-  const profile = defineProfile({
-    /* ...as above... */
-    claimValidators: {
-      jti: async (jti) => {
-        // setnx-style: returns false if the jti was already seen
-        if (!(await seenCache.addIfAbsent(String(jti), remainingTtl))) {
-          throw new Error("token replayed");
-        }
-      },
-    },
-  });
-  ```
-
-  This is intentionally not built in: a once-only cache is a distributed-state
-  decision (which store, which TTL, what happens when it's down) that your
-  deployment has to own, not something a library should silently half-do.
-- **Proof-of-possession** (mTLS-bound or DPoP-bound tokens) when replay by a
-  network eavesdropper is in your threat model. That is beyond Lacewing's
-  bearer-token scope today.
-
-### Encrypting (JWE): when the payload really is a secret
-
-A signed JWT is readable plaintext. When you genuinely need the payload
-*hidden*, not just tamper-evident, use an encrypted JWT. Same discipline as
-signing (mandatory `typ`, required `iss`/`aud`/`exp`, unique `jti`, capped
-lifetime), but with a curated set of encryption algorithms and no `none`. The
-sign-time hygiene scanner is deliberately off here, since hiding secrets is the
-whole point:
-
-```ts
-import {
-  EncryptJWT, jwtDecrypt, defineDecryptionProfile, generateEncryptionKeyPair,
-} from "lacewing";
-
-const { publicKey, privateKey } = await generateEncryptionKeyPair("ECDH-ES+A256KW");
-
-const token = await new EncryptJWT("at+jwt", { contentEncryption: "A256GCM" })
-  .issuer("https://auth.example.com")
-  .audience("https://api.example.com")
-  .subject("user-42")
-  .claim("ssn", "123-45-6789") // fine: it's encrypted, not just encoded
-  .expiresIn("10m")
-  .encrypt(publicKey);
-
-const profile = defineDecryptionProfile({
-  typ: "at+jwt",
-  issuer: "https://auth.example.com",
-  audience: "https://api.example.com",
-  keyManagementAlgorithms: ["ECDH-ES+A256KW"], // the header never chooses
-  contentEncryptionAlgorithms: ["A256GCM"],
-  key: privateKey,
-  maxTokenAge: "10m",
-});
-
-const { payload } = await jwtDecrypt(token, profile); // DecryptedJwt, distinct from VerifiedJwt
-```
-
-`none`, `RSA1_5`, `RSA-OAEP` (SHA-1) and the password-based `PBES2*` family are
-absent by construction. A JWS handed to `jwtDecrypt` (or a JWE handed to
-`jwtVerify`) is rejected: the two formats never cross over.
-
-**Portability caveat (192-bit AES):** the registry includes the `A192*`
-algorithms (`A192KW`, `A192GCMKW`, `A192GCM`, `A192CBC-HS384`) for JOSE
-completeness, and they work on Node ≥ 24 (Lacewing's floor). But WebCrypto
-implementations in browsers and some edge runtimes do not implement 192-bit
-AES at all. If tokens must be decrypted outside Node, stick to the `A128*` /
-`A256*` variants. There is no security reason to prefer 192-bit anyway.
-
-### Debugging
-
-`unsafeDecode(token)` parses without verifying and returns an `UntrustedJwt`
-that is type-incompatible with `VerifiedJwt`: useful for inspecting expired
-tokens, useless (by design) for auth logic.
-
-### Legacy interop
-
-The `RS*` (RSASSA-PKCS1-v1_5) family is not in the default set, for verifying
-tokens from issuers you don't control and can't move off PKCS#1 v1.5. Each one
-is a descriptor you import and pass where you want it accepted:
-
-```ts
-import { LEGACY_RS256 } from "lacewing/legacy/rsa"; // grep for this in code review
-
-const key = await importKey(issuerPem, LEGACY_RS256);
-const legacyIdp = defineProfile({ ..., algorithms: [LEGACY_RS256], keys: key });
-
-// Or, for an issuer that rotates across hash sizes:
-import { LEGACY_RSA } from "lacewing/legacy/rsa"; // [LEGACY_RS256, LEGACY_RS384, LEGACY_RS512]
-defineProfile({ ..., algorithms: LEGACY_RSA, keys: { jwksUri } });
-```
-
-Importing the module changes nothing, and passing a descriptor to one profile
-changes no other: `"RS256"` as a string is refused everywhere, and a profile
-that does not list `LEGACY_RS256` refuses RS256 tokens, in the same process.
-Descriptors are checked by identity, so a hand-built
-`{ name: "RS256", minKeyBits: 1024 }` is refused rather than trusted.
-
-Prefer `PS256`/`EdDSA` everywhere you control both sides.
-
-### Ed25519 has two names
-
-`EdDSA` and `Ed25519` are the same signature over the same key. `Ed25519` is
-the fully-specified name from [RFC 9864](https://www.rfc-editor.org/rfc/rfc9864),
-and some issuers and clients (oauth4webapi, for one) write only that one. Both
-are in the default set, as two entries, and Lacewing does not treat them as
-aliases:
-
-- A profile accepts the names you list. `algorithms: ["EdDSA"]` refuses a
-  token whose header says `Ed25519`; list both if your issuer might send
-  either.
-- A key is bound to the name it was imported under. A key imported for
-  `EdDSA` does not verify an `Ed25519` token, even with both allowlisted.
-  Import it once per name, or use a JWKS entry with no `alg`, which serves
-  both.
-
-### Building on Lacewing: `lacewing/extension`
-
-For packages that add a check on top of a Lacewing profile and must agree with
-Lacewing about what a valid algorithm, duration or JWS segment is. It is
-covered by semver like the root export, and it is read-only:
-
-```ts
-import { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } from "lacewing/extension";
-
-getAlgorithmProperties("ES256"); // { name: "ES256", kty: "EC", crv: "P-256", minKeyBits: 256 }, frozen
-getAlgorithmProperties("RS256", [LEGACY_RS256]); // legacy names answer only for a caller that passes them
-parseDuration("15m");            // 900, as DurationSeconds
-parseJsonObject(text, "header"); // a plain object, or JWT_INVALID; a member named twice, or __proto__/constructor/prototype, is refused
-readHeaderValue(request, "dpop", "verifyProof"); // same source rules as parseBearer
-```
-
-Descriptors come back frozen, so nothing that imports them can lower a
-key-size floor for the rest of the process, and there is no registry to add
-to: what one package opts into, by passing a `legacy/` descriptor, never
-changes what another sees. Header validation is not exported: it
-refuses an embedded `jwk`, which is right for a token and wrong for a format
-that carries its own key, so each format owns its own header rules.
+| Name | What it loosens |
+| --- | --- |
+| `unsafeAllowMissingIssuer`, `...Audience`, `...Expiration` | a signed or encrypted token without `iss`, `aud` or `exp` |
+| `unsafeAllowClaim(...path)` | the payload scanner, for one claim path |
+| `unsafeAllowLongLifetime` | a signing cap above 30 days |
+| `unsafeAllowLongTokenAge` | a profile `maxTokenAge` above 30 days |
+| `unsafeAllowLargeClockSkew` | `maxClockSkew` above 30s, up to 120s |
+| `unsafeClaimValidators` | your code in the accept path |
+| `unsafeCustomKeySource` | your code choosing the verification key |
+| `unsafeNoRevocation` | a refresh profile with no way to revoke |
+| `unsafeFailOpenOnRevocationError` | accepting tokens while the revocation store is down |
+| `unsafeDecode` | reading a token without verifying it |
+| `LEGACY_RS256`, `LEGACY_RS384`, `LEGACY_RS512`, `LEGACY_RSA` | PKCS#1 v1.5 signatures |
+
+Inside the bounds (an age up to 30 days, skew up to 30s, a lifetime up to 30
+days, a stale window up to a day) it's your number and nobody's business.
+
+## What only you can decide
+
+Two things a library is in no position to check, stated as rules rather than
+apologies:
+
+- **A kind of token is its `typ` and its audience.** Lacewing makes `typ`
+  required and checks it, and the cookbook presets can't share one. But if
+  you define two profiles yourself with the same `typ`, issuer, audience and
+  keys, you have defined the same profile twice, and they will accept each
+  other's tokens, because there is nothing left to tell them apart. Give each
+  kind its own `typ`.
+- **An HMAC secret has to come from a random number generator.** Lacewing
+  enforces the RFC 7518 length floor and refuses short and low-entropy
+  secrets. It cannot tell a random 32 bytes from a long string you typed.
+  `generateSecret()`.
 
 ## Known quirks
 
-- **Two copies of Lacewing do not share descriptors.** A `LEGACY_RS256` from
-  one installed copy is a forgery to another, because descriptors are checked
-  by identity. If a package you depend on brings its own Lacewing, `npm ls
+- **Two copies of Lacewing do not trust each other's objects.** Keys,
+  profiles, key sources and `LEGACY_*` descriptors carry provenance only the
+  copy that made them recognises, so that a look-alike object (or a
+  `{ ...profile, maxTokenAge: tenYears }`) can't skip the checks that built
+  the real one. The cost: a key imported by one installed copy is a forgery
+  to another. If a package you depend on brings its own Lacewing, `npm ls
   lacewing` shows it; dedupe to one copy.
 
 - **`x5t` in a header rejects the token.** Lacewing refuses `jku`, `x5u`,
-  `jwk`, `x5c`, `x5t`, `zip` and `crit` outright rather than ignoring them,
+  `jwk`, `x5c`, `x5t`, `x5t#S256`, `zip` and `crit` outright rather than ignoring them,
   and there is no option to allow one. Microsoft Entra ID puts `x5t` (the
   same value as `kid`) on its v1.0 access tokens, and an API registration
   gets v1.0 tokens unless it asks otherwise, so Lacewing cannot verify Entra
@@ -498,23 +161,57 @@ that carries its own key, so each format owns its own header rules.
   [access token claims reference](https://learn.microsoft.com/en-us/entra/identity-platform/access-token-claims-reference#header-claims)
   and [app manifest reference](https://learn.microsoft.com/en-us/entra/identity-platform/reference-microsoft-graph-app-manifest#api-attribute).
 
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `npm run build` | Compile to `dist/`, after deleting the old one. |
+| `npm run typecheck` | Type-check the package and the tests. |
+| `npm run lint` | Run ESLint (`lint:fix` to fix what it can). |
+| `npm test` | Run the suite with the Node test runner via `tsx`. |
+| `npm run test:dist` | Build, then test the built package through its `exports` map. |
+| `npm run compliance` | Run the suite and fail if any requirement has no passing test; writes `compliance-report.md`. |
+| `npm run demo` | Run `examples/demo.ts`. |
+| `npm run docs` | Generate the API reference and guides into `docs/` with TypeDoc. |
+| `npm run changelog` | Regenerate `CHANGELOG.md` with git-cliff. |
+
+Publishing is manual; there is no publish workflow.
+
 ## Why Lacewing exists
 
 Lacewing is not trying to compete with general-purpose JWT libraries. It started as the hardened setup I kept rebuilding for my own projects, packaged so I'd stop rebuilding it.
 
-The other reason is irritation. Generic JWT libraries are fine, but they leave enough rope for misinformed developers (and lazy AI slop) to ship something unsafe. It pisses me off when people implement something genuinely safe wrongly and then blame the technology instead of accepting operator error. These are the mistakes Lacewing makes unrepresentable or loudly explicit:
+The other reason is irritation. Generic JWT libraries are fine, but they leave enough rope for misinformed developers (and lazy AI slop) to ship something unsafe. It pisses me off when people implement something genuinely safe wrongly and then blame the technology instead of accepting operator error. So these mistakes are either impossible here or need an `unsafe*` call to make:
 
 - Decoding instead of verifying
 - Accepting `"none"` for the algorithm
 - No explicit allowlist on the server that enforces expected algorithms
-- Putting sensitive data in the token payload
-- No way to revoke stateless JWTs
-- Storing tokens in `localStorage` or `sessionStorage`
 - Not configuring `iss` or `aud`
+- Tokens that never expire, or that a verifier accepts for years
+- A refresh token nobody can revoke
 - Over-caching a JWKS when an endpoint goes down (stale keys serve for a bounded window, then verification fails closed)
 
-Insecure usage is still *possible*, but only unmistakably deliberate, through `unsafe*`-prefixed escape hatches that are easy to grep for in code review. Secure usage is the path of least resistance.
+And these it can't make impossible, so it makes them harder to do by accident:
+
+- Putting sensitive data in a signed payload: the scanner refuses the obvious ones, the docs tell you the rest
+- Storing tokens in `localStorage` or `sessionStorage`: Lacewing never touches your frontend, so it hands you a cookie helper that can't be configured weak and leaves you no excuse
+
+Insecure usage is still *possible*. It's just spelled out, in a [grep-able list](#the-escape-hatches-all-of-them), so whoever reviews your code gets to ask why. Secure usage is the path of least resistance.
+
+## Lore
+
+Almost none of this started as a library. Most of it existed first as
+harnesses, wrappers and primitives we implemented directly inside our own
+projects, because we kept having to build the same thing again. Turning it
+into one library was mostly me getting sick of rebuilding it.
+
+Our projects live on an internal GitLab instance, because some of our legacy
+projects run a modified Lacewing that bends where this one doesn't. That's
+also why the email on my commits looks weird.
+
+When Lacewing gets a new major version or a big breaking change, the release
+is often coordinated with a release of Smiduweorc's Antlion.
 
 ## Attribution
 
-Lacewing depends on and includes code adapted from the [jose](https://github.com/panva/jose) library, created by Filip Skokan (panva). We are grateful for their work!
+Lacewing depends on and includes code adapted from the [jose](https://github.com/panva/jose) library, created by Filip Skokan (panva); [NOTICE.md](./NOTICE.md) carries the licence. We are grateful for their work!

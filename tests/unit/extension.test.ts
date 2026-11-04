@@ -10,16 +10,30 @@ import { JWTError } from "../../src/util/errors.js";
 import { refusal } from "../helpers.js";
 import * as extension from "../../src/extension.js";
 import { LEGACY_RS256 } from "../../src/legacy/rsa.js";
+import { defineProfile } from "../../src/jwt/profile.js";
+import { generateSecret } from "../../src/key/generate.js";
 
-const { getAlgorithmProperties, parseDuration, parseJsonObject, readHeaderValue } = extension;
+const { getAlgorithmProperties, isVerificationProfile, parseDuration, parseJsonObject, readHeaderValue } = extension;
 
-test("[LW-ext.1] the extension exports exactly the four read-only helpers", () => {
+test("[LW-ext.1] the extension exports exactly the five read-only helpers", () => {
 	assert.deepEqual(Object.keys(extension).sort(), [
 		"getAlgorithmProperties",
+		"isVerificationProfile",
 		"parseDuration",
 		"parseJsonObject",
 		"readHeaderValue",
 	]);
+});
+
+test("[LW-ext.1] isVerificationProfile is true only for a profile defineProfile built", () => {
+	const profile = defineProfile({
+		typ: "at+jwt", issuer: "https://a.example.com", audience: "https://b.example.com",
+		algorithms: ["HS256"], keys: generateSecret("HS256"), maxTokenAge: "5m",
+	});
+	assert.equal(isVerificationProfile(profile), true);
+	for (const value of [{ ...profile }, Object.create(profile), null, undefined, "profile", {}]) {
+		assert.equal(isVerificationProfile(value), false, String(value));
+	}
 });
 
 test("[LW-ext.1] nothing that widens the algorithm set or header policy is reachable", () => {

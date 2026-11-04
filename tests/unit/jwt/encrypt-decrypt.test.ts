@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { refusal } from "../../helpers.js";
 import { Buffer } from "node:buffer";
+import { CompactEncrypt } from "jose";
 import {
 	EncryptJWT,
 	jwtDecrypt,
@@ -153,12 +154,52 @@ test("[strictness] non-canonical trailing bits are rejected in every JWE segment
 });
 
 test("a decrypted payload carrying an own __proto__ member is rejected", async () => {
-	const token = await new EncryptJWT("at+jwt", { contentEncryption: "A256GCM" })
-		.issuer(ISS).audience(AUD).subject("user-42").claim("__proto__", { isAdmin: true }).expiresIn("5m")
-		.encrypt(dir);
+	// EncryptJWT refuses to build this, so another encrypter has to.
+	const now = Math.floor(Date.now() / 1000);
+	const payload = `{"iss":"${ISS}","aud":"${AUD}","sub":"user-42","iat":${now},"exp":${now + 300},"__proto__":{"isAdmin":true}}`;
+	const token = await new CompactEncrypt(new TextEncoder().encode(payload))
+		.setProtectedHeader({ alg: "dir", enc: "A256GCM", typ: "at+jwt" })
+		.encrypt(dir.key as Uint8Array);
 	await assert.rejects(jwtDecrypt(token, profile(dir, ["dir"], ["A256GCM"])), {
 		name: "JWTError",
 		code: "JWT_INVALID",
 		message: "lacewing: Token payload contains the member name \"__proto__\", which can pollute object prototypes",
 	});
+});
+
+// Found in the second v3 audit: encryption keys skipped the family, curve and
+// modulus checks signing keys get, and failed only when first used.
+test("[LW-enc.1] an encryption key from the wrong family, curve or size is refused at import", async () => {
+	const { generateKeyPairSync } = await import("node:crypto");
+	const subtle = globalThis.crypto.subtle;
+	const ecdsa = await subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+	const x25519 = generateKeyPairSync("x25519").publicKey.toCryptoKey("X25519", true, []);
+	const pss = await subtle.generateKey(
+		{ name: "RSA-PSS", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]
+	);
+	const weakRsa = generateKeyPairSync("rsa", { modulusLength: 1024 });
+	const cases: Array<[string, unknown, string]> = [
+		["ECDSA CryptoKey", ecdsa.publicKey, "ECDH-ES"],
+		["X25519 CryptoKey", x25519, "ECDH-ES"],
+		["RSA JWK for ECDH", { kty: "RSA", n: "AQAB", e: "AQAB" }, "ECDH-ES"],
+		["OKP JWK for ECDH", { kty: "OKP", crv: "X25519", x: "AAAA" }, "ECDH-ES+A256KW"],
+		["RSA-PSS CryptoKey for OAEP", pss.publicKey, "RSA-OAEP-256"],
+		["RSA-1024 PEM for OAEP", weakRsa.publicKey.export({ type: "spki", format: "pem" }), "RSA-OAEP-256"],
+		["RSA-1024 JWK for OAEP", weakRsa.publicKey.export({ format: "jwk" }), "RSA-OAEP-256"],
+	];
+	for (const [name, material, alg] of cases) {
+		await assert.rejects(importEncryptionKey(material as never, alg), refusal("KEY_TYPE_MISMATCH"), name);
+	}
+	const good = await generateEncryptionKeyPair("ECDH-ES+A256KW", { extractable: true });
+	const p384 = generateKeyPairSync("ec", { namedCurve: "P-384" }).publicKey.toCryptoKey({ name: "ECDH", namedCurve: "P-384" }, true, []);
+	await assert.doesNotReject(importEncryptionKey(good.publicKey.key as CryptoKey, "ECDH-ES+A256KW"));
+	await assert.doesNotReject(importEncryptionKey(p384, "ECDH-ES"));
+});
+
+test("[LW-enc.1] a dir key that fits none of the profile's content encryptions is refused when the profile is built", () => {
+	const key256 = generateDirectKey("A256GCM"); // 32 bytes: A256GCM or A128CBC-HS256
+	assert.throws(() => profile(key256, ["dir"], ["A128GCM"]), TypeError);
+	assert.throws(() => profile(key256, ["dir"], ["A128GCM", "A192GCM"]), TypeError);
+	assert.doesNotThrow(() => profile(key256, ["dir"], ["A128CBC-HS256"]));
+	assert.doesNotThrow(() => profile(key256, ["dir"], ["A128GCM", "A256GCM"]));
 });

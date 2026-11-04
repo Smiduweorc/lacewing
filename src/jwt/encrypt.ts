@@ -12,24 +12,32 @@
 import { CompactEncrypt } from "jose";
 import { JWTError } from "../util/errors.js";
 import { parseDuration } from "../lib/duration.js";
+import { nowSeconds, requireClock, type Clock } from "../util/clock.js";
 import { encodeUTF8 } from "../lib/utf8.js";
+import { assertPayloadIsVerifiable, assertTokenIsVerifiable } from "../lib/limits.js";
 import { getContentEncryptionProperties, getKeyManagementProperties } from "../lib/jwe_algorithms.js";
 import { isLacewingEncryptionKey, type DurationSeconds, type LacewingEncryptionKey } from "../types.js";
 
 const DEFAULT_MAX_LIFETIME_SECONDS = 3600;
+const LONG_LIFETIME_SECONDS = 30 * 24 * 60 * 60;
 const DEFAULT_CONTENT_ENCRYPTION = "A256GCM";
 const RESERVED_CLAIMS = new Set(["iss", "sub", "aud", "exp", "nbf", "iat", "jti"]);
 
 export interface EncryptJwtOptions {
-	/** Cap on `.expiresIn()`. Default 1h - raising it is a visible choice. */
+	/** Cap on `.expiresIn()`. Default 1h, at most 30 days unless `unsafeAllowLongLifetime` is set. */
 	maxLifetime?: number | string;
+	/** Ugly on purpose: allow `maxLifetime` above 30 days. */
+	unsafeAllowLongLifetime?: boolean;
 	/** Content-encryption algorithm (`enc`). Default `A256GCM`. */
 	contentEncryption?: string;
+	/** Clock in milliseconds for `iat`/`nbf`/`exp`, default `Date.now`. */
+	now?: Clock;
 }
 
 export class EncryptJWT {
 	readonly #typ: string;
 	readonly #maxLifetime: DurationSeconds;
+	readonly #now: Clock;
 	readonly #enc: string;
 	readonly #claims = new Map<string, unknown>();
 	#iss?: string;
@@ -47,7 +55,13 @@ export class EncryptJWT {
 			throw new TypeError("EncryptJWT requires an explicit token typ, e.g. new EncryptJWT(\"at+jwt\")");
 		}
 		this.#typ = typ;
+		this.#now = requireClock(options.now, "EncryptJWT");
 		this.#maxLifetime = parseDuration(options.maxLifetime ?? DEFAULT_MAX_LIFETIME_SECONDS);
+		if (this.#maxLifetime > LONG_LIFETIME_SECONDS && options.unsafeAllowLongLifetime !== true) {
+			throw new TypeError(
+				"EncryptJWT maxLifetime is capped at 30 days - set unsafeAllowLongLifetime to go beyond"
+			);
+		}
 		this.#enc = options.contentEncryption ?? DEFAULT_CONTENT_ENCRYPTION;
 		// Fail fast on an unknown enc rather than at .encrypt() time.
 		getContentEncryptionProperties(this.#enc);
@@ -166,7 +180,16 @@ export class EncryptJWT {
 			);
 		}
 
-		const now = Math.floor(Date.now() / 1000);
+		if (
+			this.#notBefore !== undefined &&
+			this.#expiresIn !== undefined &&
+			this.#notBefore >= this.#expiresIn
+		) {
+			// nbf at or after exp makes a token that can never be valid.
+			throw new TypeError("notBefore must be earlier than expiresIn");
+		}
+
+		const now = nowSeconds(this.#now);
 		const payload: Record<string, unknown> = Object.fromEntries(this.#claims);
 		if (this.#iss !== undefined) payload.iss = this.#iss;
 		if (this.#sub !== undefined) payload.sub = this.#sub;
@@ -176,8 +199,11 @@ export class EncryptJWT {
 		if (this.#expiresIn !== undefined) payload.exp = now + this.#expiresIn;
 		payload.iat = now;
 
-		return new CompactEncrypt(encodeUTF8(JSON.stringify(payload)))
+		const json = JSON.stringify(payload);
+		assertPayloadIsVerifiable(payload, json, "EncryptJWT");
+		const token = await new CompactEncrypt(encodeUTF8(json))
 			.setProtectedHeader({ alg: key.algorithm, enc: this.#enc, typ: this.#typ })
 			.encrypt(key.key as Parameters<CompactEncrypt["encrypt"]>[0]);
+		return assertTokenIsVerifiable(token, "EncryptJWT");
 	}
 }

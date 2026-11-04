@@ -27,10 +27,11 @@ test("every exports entry imports by package name", async () => {
 	}
 });
 
-test("lacewing/extension exposes exactly its four helpers, working", async () => {
+test("lacewing/extension exposes exactly its five helpers, working", async () => {
 	const extension = await import("lacewing/extension");
 	assert.deepEqual(Object.keys(extension).sort(), [
 		"getAlgorithmProperties",
+		"isVerificationProfile",
 		"parseDuration",
 		"parseJsonObject",
 		"readHeaderValue",
@@ -41,6 +42,19 @@ test("lacewing/extension exposes exactly its four helpers, working", async () =>
 	assert.equal(extension.getAlgorithmProperties("Ed25519").crv, "Ed25519");
 	assert.equal(Object.isFrozen(extension.getAlgorithmProperties("ES256")), true);
 	assert.equal(extension.readHeaderValue(new globalThis.Headers({ dpop: "p" }), "dpop", "t"), "p");
+});
+
+// Like descriptors, provenance must survive crossing entry points: a profile
+// built through the root has to be recognised through lacewing/extension.
+test("a profile from the root entry is a verification profile to lacewing/extension", async () => {
+	const root = await import("lacewing");
+	const extension = await import("lacewing/extension");
+	const profile = root.defineProfile({
+		typ: "at+jwt", issuer: "https://a.example.com", audience: "https://b.example.com",
+		algorithms: ["HS256"], keys: root.generateSecret("HS256"), maxTokenAge: "5m",
+	});
+	assert.equal(extension.isVerificationProfile(profile), true);
+	assert.equal(extension.isVerificationProfile({ ...profile }), false);
 });
 
 // Descriptors are checked by identity, so every entry point must hand out the

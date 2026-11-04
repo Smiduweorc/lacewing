@@ -18,14 +18,16 @@ import { compactDecrypt } from "jose";
 import { JWTError } from "../util/errors.js";
 import { decodeBase64url } from "../lib/base64url.js";
 import { decodeUTF8 } from "../lib/utf8.js";
+import { MAX_TOKEN_LENGTH } from "../lib/limits.js";
 import { parseJsonObject } from "../lib/json.js";
-import { sanitizeKid, normalizeTyp } from "../lib/headers.js";
+import { FORBIDDEN_PARAMS, sanitizeKid, normalizeTyp } from "../lib/headers.js";
 import {
 	getContentEncryptionProperties,
 	getKeyManagementProperties,
 } from "../lib/jwe_algorithms.js";
 import { validateClaims } from "../lib/claims.js";
-import { buildRevocationContext } from "../revocation/store.js";
+import { assertNotRevoked } from "../revocation/store.js";
+import { isDecryptionProfile } from "./decryption_profile.js";
 import {
 	SetAlg,
 	type DecryptedJwt,
@@ -33,12 +35,6 @@ import {
 	type JweHeader,
 	type JwtPayLoad,
 } from "../types.js";
-
-const MAX_TOKEN_LENGTH = 16384;
-
-// Never honored on a JWE header. `zip` is here for the same reason as on the
-// JWS side and then some: an attacker-set `zip: DEF` is a decompression bomb.
-const FORBIDDEN_PARAMS = ["jku", "x5u", "jwk", "x5c", "x5t", "zip", "crit"] as const;
 
 function validateJweHeader(raw: Record<string, unknown>, profile: ExpectedDecryptionProfile): JweHeader {
 	for (const param of FORBIDDEN_PARAMS) {
@@ -114,6 +110,11 @@ export async function jwtDecrypt(
 	token: string,
 	profile: ExpectedDecryptionProfile
 ): Promise<DecryptedJwt> {
+	if (!isDecryptionProfile(profile)) {
+		throw new TypeError(
+			"jwtDecrypt needs a profile built by defineDecryptionProfile(); a hand-built or copied one skips its checks"
+		);
+	}
 	if (typeof token !== "string" || token.length === 0) {
 		throw new JWTError("JWT_INVALID", "Token must be a non-empty string");
 	}
@@ -170,30 +171,7 @@ export async function jwtDecrypt(
 	const payload = parseJsonObject(decodeUTF8(plaintext), "payload");
 	await validateClaims(payload, profile);
 
-	if (profile.revocation !== undefined) {
-		if (typeof payload.jti !== "string") {
-			throw new JWTError(
-				"MISSING_CLAIM",
-				"This profile has a revocation store but the token carries no jti",
-				{ claim: "jti" }
-			);
-		}
-		let revoked: boolean;
-		try {
-			revoked = await profile.revocation.isRevoked(buildRevocationContext(payload));
-		} catch (cause) {
-			if (profile.unsafeFailOpenOnRevocationError === true) {
-				revoked = false;
-			} else {
-				throw new JWTError(
-					"REVOCATION_CHECK_FAILED",
-					"Revocation store errored - failing closed (LW-rev.4)",
-					{ cause }
-				);
-			}
-		}
-		if (revoked) throw new JWTError("JWT_REVOKED", "Token has been revoked");
-	}
+	await assertNotRevoked(payload, profile);
 
 	return { header, payload: payload as JwtPayLoad } as DecryptedJwt;
 }

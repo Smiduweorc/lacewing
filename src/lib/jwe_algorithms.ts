@@ -63,14 +63,6 @@ const CONTENT_ENCRYPTION: readonly JweContentEncryptionInfo[] = [
 const keyManagement = new Map(KEY_MANAGEMENT.map((info) => [info.name, info]));
 const contentEncryption = new Map(CONTENT_ENCRYPTION.map((info) => [info.name, info]));
 
-export function isValidKeyManagementAlgorithm(alg: string): boolean {
-	return keyManagement.has(alg);
-}
-
-export function isValidContentEncryptionAlgorithm(enc: string): boolean {
-	return contentEncryption.has(enc);
-}
-
 /** Look up a key-management algorithm, or throw `ALGORITHM_NOT_ALLOWED`. */
 export function getKeyManagementProperties(alg: string): JweKeyManagementInfo {
 	const info = keyManagement.get(alg);
@@ -105,12 +97,4 @@ export function toValidKeyManagementAlg(alg: string): ValidAlg {
 export function toValidContentEncryptionAlg(enc: string): ValidAlg {
 	getContentEncryptionProperties(enc);
 	return SetAlg(enc);
-}
-
-export function listKeyManagementAlgorithms(): string[] {
-	return [...keyManagement.keys()];
-}
-
-export function listContentEncryptionAlgorithms(): string[] {
-	return [...contentEncryption.keys()];
 }
