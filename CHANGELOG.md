@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.1] - 2026-11-08
+
+### Documentation
+
+- Revamped docs and corrected notice.md
+
 ## [3.0.0] - 2026-11-04
 
 ### Bug Fixes
