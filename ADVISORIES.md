@@ -4,9 +4,8 @@ title: Security advisories
 
 # Security advisories
 
-Every security advisory published for Lacewing, newest first. Each one links
-to its GitHub advisory, which carries the full write-up: details, a proof of
-concept where there is one, and workarounds for anyone who cannot upgrade yet.
+Every security advisory published for Lacewing, newest first. Each links to
+its GitHub advisory for the full write-up.
 
 Fixes ship for the latest minor version only (see [SECURITY.md](./SECURITY.md)).
 If your installed version falls inside an affected range below, upgrade.
@@ -22,7 +21,7 @@ If your installed version falls inside an affected range below, upgrade.
 A JWKS entry with no `alg` member could be used under every algorithm in the
 profile's allowlist that shares its key type, so one RSA key verified PS256,
 PS384 and PS512 tokens, and one `oct` key verified HS256, HS384 and HS512. That
-breaks RFC 8725 §3.1's "one key, one algorithm". Custom key sources had the
+breaks RFC 8725 section 3.1's "one key, one algorithm". Custom key sources had the
 same gap: the `alg` they returned was ignored, and raw HMAC secrets they
 returned skipped the strength check.
 

@@ -1,9 +1,9 @@
 # Migrating from 2.x to 3.0
 
-3.0 makes every remaining way to loosen a check carry an `unsafe` name you
-can grep for, makes the caller name the numbers only the caller knows, and
-fixes two v2 behaviours that did not do what the docs said. Each row is a
-build or runtime error in 3.0 until you change it.
+In 3.0 every remaining way to loosen a check has an `unsafe` name, the JWKS
+cache numbers have no defaults, and two 2.x behaviours that did not match the
+docs are fixed. Each row is a build or runtime error in 3.0 until you change
+it.
 
 | 2.x | 3.0 |
 | --- | --- |
@@ -33,44 +33,44 @@ still waives the whole claim, as before.
 
 Behaviour that changed without an API change:
 
-- **The stale-while-error window starts when the cached keys expire**, not
-  when they were fetched. In 2.x an endpoint sending `max-age=3600` or more
+- The stale-while-error window starts when the cached keys expire, not when
+  they were fetched. In 2.x an endpoint sending `max-age=3600` or more
   got no stale serving at all with the default 3600s window. Keys can now be
   trusted for at most the cache lifetime plus the window.
-- **The payload scanner matches names by word.** `businessName`,
+- The payload scanner matches names by word. `businessName`,
   `classNumber` and `tokenizer` now pass; `apiKey`, `accesstoken` and
   `passwordHash` are still refused. Waivers you added for the first kind can
   go.
-- **`newRefreshToken()` caps lifetimes at 30 days**, down from 90, to match
+- `newRefreshToken()` caps lifetimes at 30 days, down from 90, to match
   `refreshTokenProfile`'s default `maxTokenAge`. A 90-day refresh token was
   refused at day 30 anyway.
-- **Keys, profiles and key sources are unforgeable.** In 2.x an object
+- Keys, profiles and key sources can't be forged. In 2.x an object
   literal with `__brand: "LacewingKey"` signed with whatever bytes it held,
   and `jwtVerify` accepted any object shaped like a profile, including one
   with a decade of accepted age. Both are refused now.
-- **Binary HMAC secrets that repeat a short pattern** (all zeros, `fill(7)`)
+- Binary HMAC secrets that repeat a short pattern (all zeros, `fill(7)`)
   throw `ENTROPY_CHECK_FAILED`, from `importKey`, a JWKS and custom sources.
-- **A `now` clock that returns NaN or a non-number throws** on every read.
+- A `now` clock that returns NaN or a non-number throws on every read.
   Every comparison with NaN is false, so it would have let expired tokens
   through.
-- **`x5t#S256` in a header rejects the token**, like `x5t` already did.
-- **Cookie prefixes are matched in any case**: `__HOST-t` gets the `__Host-`
+- `x5t#S256` in a header rejects the token, like `x5t` already did.
+- Cookie prefixes are matched in any case: `__HOST-t` gets the `__Host-`
   rules, as browsers apply them. A cookie path with a control character
   throws.
-- **The scanner also refuses card numbers written as JSON numbers, and
-  compact JWEs.**
-- **New and optional:** an `onEvent` listener on profiles and
+- The scanner also refuses card numbers written as JSON numbers, and
+  compact JWEs.
+- New and optional: an `onEvent` listener on profiles and
   `createRemoteJWKSet`, and a `now` clock option everywhere time is read.
-- **`MemoryRevocationStore` revokes by subject and session too**:
+- `MemoryRevocationStore` revokes by subject and session too:
   `revokeSubject(sub, until)` and `revokeSession(sid, until)`. Revoking the
   same `jti` twice keeps the later expiry instead of the last one written.
 
 ## For packages that take a Lacewing profile
 
 A package that accepts your profile (Antlion, for one) used to check its
-shape. A shape is now worthless: `jwtVerify` throws `TypeError` for any
-profile `defineProfile` didn't build. Check provenance where the package is
-configured, so a bad profile fails at setup rather than on the first request:
+shape. That no longer helps: `jwtVerify` throws `TypeError` for any profile
+`defineProfile` didn't build. Check provenance where the package is
+configured, so a bad profile fails at setup instead of on the first request:
 
 ```ts
 import { isVerificationProfile } from "lacewing/extension";
@@ -85,10 +85,9 @@ Tests that hand-rolled a `KeySource` wrap it in `unsafeCustomKeySource`, and
 
 # Migrating from 1.x to 2.0
 
-2.0 breaks two things on purpose: how legacy `RS*` algorithms are enabled, and
-the error classes. Each section says what to change.
+2.0 changes how legacy `RS*` algorithms are enabled, and the error classes.
 
-### Legacy algorithms are values you pass, not a switch you flip
+## Legacy algorithms are passed, not enabled
 
 In 1.x, `enableLegacyRS256()` added `RS256` to a registry shared by the whole
 process. Every profile, `importKey` call and package in that process could
@@ -135,7 +134,7 @@ Two public types follow from this:
   `getVerificationKey(header, allowedAlgorithms: readonly AlgorithmInfo[])`,
   so it can see each algorithm's key type and curve without a lookup.
 
-### For antlion (or any package built on `lacewing/extension`)
+## For Antlion (or any package built on `lacewing/extension`)
 
 Antlion's `legacyRS256Proofs()` called `enableLegacyRS256()` so that
 `getAlgorithmProperties("RS256")` would answer in `checkKey`. That call, and
@@ -162,7 +161,7 @@ the process-wide side effect its doc comment warned about, go away:
 5. The access-token profile's own `algorithms` is unaffected unless it lists
    `"RS256"`; if it does, list `LEGACY_RS256` instead.
 
-### One error class: `JWTError` with a `code`
+## One error class: `JWTError` with a `code`
 
 The sixteen 1.x subclasses are gone. Every refusal is now a `JWTError`, and
 `error.code` says which one it was. The codes themselves are the strings 1.x

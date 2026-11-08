@@ -3,24 +3,9 @@ name: Bug report
 about: Create a report to help us improve
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+- Versions: lacewing, Node, OS
+- What you called (profile options and the call), with keys, secrets and real tokens removed
+- The error `code` and message you got, or what was accepted that shouldn't have been
+- What you expected
 
-**To Reproduce**
-Steps to reproduce the behavior:
-
-1. Go to '...'
-2. Run '....'
-3. See error
-
-**Expected behavior**
-A clear and concise description of what you expected to happen.
-
-**Environment (please complete the following information):**
-
-- OS: [e.g. Ubuntu 24.04, Windows 11, macOS 15]
-- Node.js version: [e.g. 22.11.0]
-- Package version: [e.g. 1.0.0]
-
-**Additional context**
-Add any other context about the problem here.
+Security issue? Don't open an issue; see [SECURITY.md](../../SECURITY.md).

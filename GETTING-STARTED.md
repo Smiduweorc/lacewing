@@ -4,29 +4,8 @@ title: Getting started
 
 # Getting started with Lacewing
 
-Adopting Lacewing in a real service: keys, profiles, issuing, verifying,
-transport, refresh tokens, revocation, and key distribution.
-
-For the API reference, see the [README](./README.md); `npm run demo` runs the
-main flows end to end.
-
-**Contents**
-
-1. [Before you start](#1-before-you-start)
-2. [A working example](#2-a-working-example)
-3. [Keys](#3-keys)
-4. [Profiles](#4-profiles)
-5. [Issuing tokens](#5-issuing-tokens)
-6. [Verifying tokens](#6-verifying-tokens)
-7. [Getting the token out of a request](#7-getting-the-token-out-of-a-request)
-8. [Access and refresh tokens](#8-access-and-refresh-tokens)
-9. [Revocation](#9-revocation)
-10. [Distributing keys in production](#10-distributing-keys-in-production)
-11. [Handling errors](#11-handling-errors)
-12. [Coming from `jsonwebtoken`](#12-coming-from-jsonwebtoken)
-13. [Adoption checklist](#13-adoption-checklist)
-
----
+Adopting Lacewing in a service, step by step. Each step links to the guide
+with the details.
 
 ## 1. Before you start
 
@@ -45,11 +24,9 @@ is a branded type that only `jwtVerify` produces, so handing an unverified
 token to code expecting verified claims fails to compile. From plain
 JavaScript you lose that check.
 
----
-
 ## 2. A working example
 
-Copy this into `demo.mts` and run `node --experimental-strip-types demo.mts`:
+Copy this into `demo.mts` and run `node demo.mts`:
 
 ```ts
 import { generateKeyPair, SignJWT, defineProfile, jwtVerify } from "lacewing";
@@ -84,90 +61,56 @@ const { payload } = await jwtVerify(token, profile);
 console.log(payload.sub, payload.scope); // user-42 read:documents
 ```
 
----
-
 ## 3. Keys
 
-### Generating
-
 ```ts
-import { generateKeyPair, generateSecret } from "lacewing";
+import { generateKeyPair, generateSecret, importKey } from "lacewing";
 
 const { publicKey, privateKey } = await generateKeyPair();          // EdDSA
 const { publicKey: p2, privateKey: k2 } = await generateKeyPair("ES256");
 const secret = generateSecret("HS256");                             // symmetric
-```
-
-Supported algorithms: `EdDSA` (default), `ES256`/`ES384`/`ES512`,
-`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. The `RS*` family is not in
-that set, and `"RS256"` as a string is refused. Using it means importing
-`LEGACY_RS256` (or `LEGACY_RSA` for the whole family) from
-`lacewing/legacy/rsa` and passing it to `importKey` and to the profile's
-`algorithms`, which is the line code review looks for. It applies only where
-you pass it. Prefer `PS256` or `EdDSA` where you control both sides.
-
-Use `EdDSA` unless you have a reason not to. Under `HS256` everyone who can
-verify a token can also mint one, so your API servers can impersonate your
-auth server.
-
-A key is bound to one algorithm at import time. `LacewingKey<"ES256">`
-cannot be passed where `LacewingKey<"HS256">` is expected, so algorithm
-confusion is a compile error.
-
-### Generated private keys cannot be exported
-
-`generateKeyPair()` produces a non-extractable private key by default, so it
-cannot leave through `exportKeyPEM`:
-
-```ts
-const { privateKey } = await generateKeyPair();
-await exportKeyPEM(privateKey); // throws KEY_EXPORT_FAILED
-```
-
-That suits a key generated at boot, but it means you cannot generate a key
-and then save it. To persist one, ask for it:
-
-```ts
-const { publicKey, privateKey } = await generateKeyPair("EdDSA", {
-  extractable: true,
-});
-const pem = await exportKeyPEM(privateKey); // now works; store it somewhere safe
-```
-
-Public keys export either way.
-
-### Loading existing keys
-
-```ts
-import { importKey } from "lacewing";
 
 const signing = await importKey(process.env.PRIVATE_KEY_PEM!, "EdDSA");
 const fromJwk = await importKey({ kty: "OKP", crv: "Ed25519", x: "..." }, "EdDSA");
 const hmac = await importKey(process.env.SECRET!, "HS256");
 ```
 
-`importKey` runs an entropy check on HMAC secrets, so a password-shaped
-secret fails at startup instead of producing weak signatures:
+Supported algorithms: `EdDSA` (default), `Ed25519`, `ES256`/`ES384`/`ES512`,
+`PS256`/`PS384`/`PS512`, `HS256`/`HS384`/`HS512`. `RS*` needs a descriptor
+from `lacewing/legacy/rsa` ([Verifying](./guides/verifying.md)).
+
+Use `EdDSA` unless you have a reason not to. With HMAC, every verifier can
+also sign, and secrets have to pass a length and entropy check at import
+([Signing](./guides/signing.md#hmac)).
+
+A key is bound to one algorithm at import time. `LacewingKey<"ES256">`
+cannot be passed where `LacewingKey<"HS256">` is expected, so algorithm
+confusion is a compile error.
+
+`generateKeyPair()` makes a non-extractable private key by default, so you
+can't generate a key and then save it:
 
 ```ts
-await importKey("my-secret-password-123", "HS256"); // throws ENTROPY_CHECK_FAILED
+const { privateKey } = await generateKeyPair();
+await exportKeyPEM(privateKey); // throws KEY_EXPORT_FAILED
 ```
 
-A string secret must be random bytes written as hex or base64(url), long
-enough to carry the algorithm's key size: for HS256 that is 64 hex or 43
-base64 characters. Spaces and punctuation are refused, which also catches
-random secrets from generators that mix in symbols.
+To persist one, ask for it:
 
-If that fires on a secret you already use, replace the secret.
-`generateSecret("HS256")` produces one at the algorithm's minimum size.
+```ts
+const { publicKey, privateKey } = await generateKeyPair("EdDSA", {
+  extractable: true,
+});
+const pem = await exportKeyPEM(privateKey);
+```
 
----
+Public keys export either way.
 
 ## 4. Profiles
 
-A profile is the complete set of demands a verifier makes, and the only
-argument shape `jwtVerify` accepts. That is what makes `typ`, `issuer`,
-`audience`, `algorithms` and `keys` impossible to omit.
+A profile is everything a verifier demands, and the only argument shape
+`jwtVerify` accepts, so `typ`, `issuer`, `audience`, `algorithms` and `keys`
+can't be left out.
 
 ```ts
 import { defineProfile } from "lacewing";
@@ -176,7 +119,7 @@ const profile = defineProfile({
   typ: "at+jwt",                    // required: which kind of token
   issuer: "https://auth.example.com",
   audience: "https://api.example.com",
-  algorithms: ["EdDSA"],            // the header never gets a vote
+  algorithms: ["EdDSA"],            // the header can't choose the algorithm
   keys: publicKey,
   maxTokenAge: "15m",               // required: max age by iat, independent of exp
 
@@ -195,21 +138,17 @@ const profile = defineProfile({
 });
 ```
 
-Define each profile once at module scope and export it. A profile is inert
-configuration; building one per request wastes work and lets two call sites
-disagree about what is acceptable.
+Define each profile once at module scope and export it. Building one per
+request wastes work and lets two call sites disagree about what is
+acceptable.
 
 ```ts
 // auth/profiles.ts: the whole app imports from here
 export const apiProfile = defineProfile({ /* ... */ });
 ```
 
-`maxTokenAge` and `exp` are separate controls and you want both. `exp` is
-what the issuer claimed. `maxTokenAge` is what you accept regardless, so an
-issuer that starts handing out 30-day access tokens does not widen your
-window.
-
----
+`maxTokenAge` and `exp` are separate limits and you want both
+([Lifetimes](./guides/lifetimes-and-revocation.md#age-and-lifetime)).
 
 ## 5. Issuing tokens
 
@@ -227,46 +166,20 @@ const token = await new SignJWT("at+jwt")   // typ is a constructor argument
 ```
 
 `.sign()` refuses to run without `issuer`, `audience` and `expiresIn`. Each
-is waivable through a method named to show up in code review:
+can be waived with an `unsafeAllowMissing*()` call, which CI can grep for:
 
 ```ts
 await new SignJWT("at+jwt")
   .audience("...")
   .expiresIn("5m")
-  .unsafeAllowMissingIssuer()   // grep for `unsafeAllow` in CI
+  .unsafeAllowMissingIssuer()
   .sign(privateKey);
 ```
 
-Applied automatically, with no configuration:
-
-- `jti`: a unique UUID on every token, so revocation always has a key
-- `iat`: set at sign time
-- Lifetime cap: `.expiresIn()` above 1h throws `MAX_LIFETIME_EXCEEDED`. Raise
-  it with `new SignJWT("at+jwt", { maxLifetime: "24h" })`, up to 30 days.
-  Past that it takes `unsafeAllowLongLifetime: true`
-- Payload hygiene: the payload is scanned before signing and refuses
-  anything shaped like a password, card number, or PEM key
-
-A JWS payload is base64url-encoded plaintext, readable by anyone holding the
-token. That is what the last check is for:
-
-```ts
-await new SignJWT("at+jwt")
-  .issuer(ISSUER).audience(AUDIENCE).expiresIn("5m")
-  .claim("password", "hunter2")
-  .sign(privateKey);                        // throws PAYLOAD_HYGIENE_VIOLATION
-```
-
-Names are matched by word, so `businessName` does not read as `ssn` and
-`tokenizer` does not read as `token`. For a real false positive, waive that
-one claim, or one field inside it, by path. The error tells you the path:
-
-```ts
-.unsafeAllowClaim("password_changed_at")
-.unsafeAllowClaim("profile", "passwordHint") // only this nested field
-```
-
----
+Every token gets a `jti` and an `iat`. `.expiresIn()` above 1h throws
+`MAX_LIFETIME_EXCEEDED` unless you raise the cap, and the payload is scanned
+for anything shaped like a password, card number or PEM key
+([Signing](./guides/signing.md)).
 
 ## 6. Verifying tokens
 
@@ -274,222 +187,54 @@ one claim, or one field inside it, by path. The error tells you the path:
 import { jwtVerify } from "lacewing";
 
 const verified = await jwtVerify(token, profile);
-verified.payload.sub;    // trusted
-verified.header.alg;     // trusted
+verified.payload.sub;
+verified.header.alg;
 ```
 
 `jwtVerify` returns a fully checked `VerifiedJwt` or throws. There is no
-partial result and no decoded-but-unverified object to trust by accident.
-Checks run fail-fast in this order: structure, header, key resolution,
-signature, claims, your custom validators, revocation.
+partial result. Checks run in this order and stop at the first failure:
+structure, header, key resolution, signature, claims, your custom
+validators, revocation. Revocation runs last so unauthenticated input never
+reaches your revocation store.
 
-Revocation runs last so unauthenticated input never reaches your revocation
-store.
-
-### Reading a token you have not verified
-
-Debugging and logging sometimes need the contents of an unverified token.
-`unsafeDecode` returns one, branded `UntrustedJwt` and type-incompatible
-with `VerifiedJwt`:
-
-```ts
-import { unsafeDecode } from "lacewing";
-
-const { header, payload } = unsafeDecode(token); // never trust these
-console.log("token was issued by", payload.iss);
-```
-
----
+To read a token without verifying it (for debugging), use `unsafeDecode`
+([Errors, events and time](./guides/operations.md#debugging)).
 
 ## 7. Getting the token out of a request
 
-Two transports. Both refuse ambiguous input rather than resolving it.
-
 ```ts
-import { parseBearer, readTokenCookie, setTokenCookie, buildTokenCookie } from "lacewing";
+import { parseBearer, readTokenCookie, setTokenCookie } from "lacewing";
 
 const token = parseBearer(request);            // strict RFC 6750
 const fromCookie = readTokenCookie(request);   // __Host-token by default
+setTokenCookie(response.headers, token);       // HttpOnly; Secure; SameSite=Lax
 ```
 
-Do not put tokens in `localStorage` or `sessionStorage`. Both are readable
-by any script on the page, so one XSS is total token theft. Use an
-`HttpOnly` cookie in browsers and an in-memory bearer token between
-services.
-
-```ts
-setTokenCookie(response.headers, token);
-// __Host-token=...; Path=/; HttpOnly; Secure; SameSite=Lax
-```
-
-`HttpOnly`, `Secure` and `SameSite` are always emitted, there is no option
-to remove them, and `SameSite=None` throws. The default name uses the
-`__Host-` prefix, which binds the cookie to the exact origin and forbids
-`Domain`.
-
-To log someone out:
-
-```ts
-import { clearTokenCookie } from "lacewing";
-clearTokenCookie(response.headers);
-```
-
-### On Node frameworks
-
-Both readers take WHATWG `Headers`, anything carrying them such as
-`Request`, or the raw header string. Express, Fastify and Koa hand you a
-plain object instead, so convert once at the edge:
-
-```ts
-app.use((req, res, next) => {
-  const headers = new Headers(req.headers as Record<string, string>);
-  req.token = readTokenCookie(headers) ?? parseBearer(headers);
-  next();
-});
-```
-
-Passing the raw `req` throws a `TypeError` naming this fix. It does not read
-as "no token".
-
-The response side is a string, so it works anywhere:
-
-```ts
-res.setHeader("Set-Cookie", buildTokenCookie(token));   // Express
-reply.header("Set-Cookie", buildTokenCookie(token));    // Fastify
-c.header("Set-Cookie", buildTokenCookie(token));        // Hono
-```
-
----
+Browsers get the `HttpOnly` cookie, services get a bearer header. Express,
+Fastify and Koa need `new Headers(req.headers as Record<string, string>)`
+first. Both are covered in [Transport](./guides/transport.md).
 
 ## 8. Access and refresh tokens
 
-A refresh token buying API access, or an access token minting new sessions,
-is a token-confusion bug. Both profiles ship with the library:
-
-```ts
-import {
-  accessTokenProfile, refreshTokenProfile,
-  newAccessToken, newRefreshToken,
-} from "lacewing";
-
-export const apiProfile = accessTokenProfile({
-  issuer: "https://auth.example.com",
-  audience: "https://api.example.com",        // the API
-  algorithms: ["EdDSA"],
-  keys: { jwksUri: "https://auth.example.com/jwks", cacheTtlSeconds: 300, cooldownSeconds: 30, timeoutMs: 2000 },
-});
-
-export const refreshProfile = refreshTokenProfile({
-  issuer: "https://auth.example.com",
-  audience: "https://auth.example.com/token", // the auth server, never the API
-  algorithms: ["EdDSA"],
-  keys: publicKey,
-  revocation: store,                          // required; unsafeNoRevocation to opt out
-});
-```
-
-|  | access | refresh |
-|---|---|---|
-| `typ` | `at+jwt` | `rt+jwt` |
-| audience | your API | your auth server's token endpoint |
-| default max age | 10m | 30d |
-| lifetime cap when signing | 1h | 30d |
-| revocation | optional | required |
-
-Issuing:
-
-```ts
-const access = await newAccessToken()
-  .issuer(ISSUER).audience(API).subject("user-42").expiresIn("10m").sign(privateKey);
-
-const refresh = await newRefreshToken()
-  .issuer(ISSUER).audience(`${ISSUER}/token`).subject("user-42").expiresIn("30d").sign(privateKey);
-```
-
-`typ` does the work. Even with identical keys, claims and audience, each
-profile refuses the other's tokens:
-
-```ts
-// throws JWT_CLAIM_VALIDATION_FAILED: typ is rt+jwt, the profile demands at+jwt
-await jwtVerify(refresh, apiProfile);
-```
-
----
+Use `accessTokenProfile` and `refreshTokenProfile` (and `newAccessToken()` /
+`newRefreshToken()` to sign) instead of one profile for both. They refuse
+each other's tokens by `typ`, and the refresh profile requires a revocation
+store. Defaults and an example are in
+[Lifetimes and revocation](./guides/lifetimes-and-revocation.md).
 
 ## 9. Revocation
 
-Every token gets a `jti`, so revocation always has a key. The in-memory
-store suits a single process; implement the interface for anything else.
-
-```ts
-import { MemoryRevocationStore, defineProfile } from "lacewing";
-
-const store = new MemoryRevocationStore();
-
-const profile = defineProfile({
-  typ: "at+jwt",
-  issuer: ISSUER,
-  audience: AUDIENCE,
-  algorithms: ["EdDSA"],
-  keys: publicKey,
-  maxTokenAge: "15m",
-  revocation: store,
-});
-
-// On logout. jti and exp both come off the verified payload.
-const { payload } = await jwtVerify(token, profile);
-store.revoke(payload.jti as string, payload.exp as number);
-
-await jwtVerify(token, profile); // now throws JWT_REVOKED
-```
-
-Entries are dropped once the token would have expired anyway, so the store
-does not grow without bound.
-
-To kill everything a user or a session holds, revoke by `sub` or `sid`.
-Tokens issued up to that second are revoked; tokens issued afterwards (the
-user logging back in) are not. `until` is how long the cut-off must last:
-now plus your longest `maxTokenAge` for those tokens.
-
-```ts
-const until = Math.floor(Date.now() / 1000) + 30 * 24 * 3600; // the refresh profile's 30d
-store.revokeSubject(payload.sub as string, until); // "log out everywhere"
-store.revokeSession(payload.sid as string, until); // one device
-```
-
-For a deployment, back it with Redis or your database:
-
-```ts
-import type { RevocationStore, TokenRevocationContext } from "lacewing";
-
-class RedisRevocationStore implements RevocationStore {
-  constructor(private redis: Redis) {}
-
-  async isRevoked(ctx: TokenRevocationContext): Promise<boolean> {
-    if (ctx.jti === undefined) return false;
-    return (await this.redis.exists(`revoked:${ctx.jti}`)) === 1;
-  }
-}
-```
-
-The context also carries `sub`, `sid`, `exp` and `iat`, so a shared store
-can do what `revokeSubject` and `revokeSession` do: keep a per-subject
-cut-off time and reject any token whose `iat` is at or before it.
-
-A store that throws fails closed: the token is rejected because you cannot
-confirm it is not revoked. A Redis outage is therefore an auth outage. The
-opposite trade exists and is named to be conspicuous:
-
-```ts
-unsafeFailOpenOnRevocationError: true
-```
-
----
+Pass a `RevocationStore` as the profile's `revocation`.
+`MemoryRevocationStore` works for a single process; for more than one, back
+the interface with Redis or your database. A store that throws fails closed,
+so a store outage is an auth outage. Revoking by token, subject or session,
+and a Redis example, are in
+[Lifetimes and revocation](./guides/lifetimes-and-revocation.md#revocation).
 
 ## 10. Distributing keys in production
 
-Your API servers need the public key. In production that means a JWKS
-endpoint rather than shipping a key file to every service:
+Your API servers need the public key. In production, publish a JWKS instead
+of shipping a key file to every service:
 
 ```ts
 const profile = defineProfile({
@@ -500,7 +245,7 @@ const profile = defineProfile({
   keys: {
     jwksUri: "https://auth.example.com/.well-known/jwks.json",
     cacheTtlSeconds: 300,          // no Cache-Control? trust fetched keys this long (0-86400)
-    cooldownSeconds: 30,           // at most one fetch per 30s, whatever kids strangers send (1-86400)
+    cooldownSeconds: 30,           // at most one fetch per 30s (1-86400)
     timeoutMs: 2000,               // verification waits this long on a cold cache
     staleWhileErrorSeconds: 3600,  // optional, default 3600, at most 86400
   },
@@ -508,25 +253,8 @@ const profile = defineProfile({
 });
 ```
 
-The first three have no defaults, because only you know them.
-`cacheTtlSeconds` is how long a key your issuer removed stays trusted here
-(a `Cache-Control: max-age` on the response wins, capped at a day).
-`cooldownSeconds` is how often a token with a made-up `kid` can make you
-call your issuer, and it has to be shorter than your rotation overlap or a
-fresh key is refused until it passes. `timeoutMs` is part of your request
-latency budget.
-
-HTTPS is mandatory, redirects are never followed, the response is read under
-a 1 MiB budget, and symmetric keys are refused: a JWKS endpoint is public, so
-an `oct` key published there is one any reader could mint with.
-
-`staleWhileErrorSeconds` starts counting when the cached keys' lifetime
-ends, and only while the endpoint is failing. Then verification fails
-closed. It is bounded deliberately: a key rotated out because it was
-compromised must not stay trusted for as long as an attacker can keep your
-JWKS endpoint unreachable. The longest any fetched key can be trusted is the
-cache lifetime plus this window, two days at the outside. Set it to `0` to
-disable stale serving.
+The first three have no defaults. What each one controls, and what happens
+when the endpoint goes down, is in [Verifying](./guides/verifying.md).
 
 Publishing the JWKS from the signing side:
 
@@ -552,7 +280,7 @@ await jwtVerify(token, profile);
 
 Since you cannot issue with a `kid`, plan around it. In order of preference:
 
-1. Verify against an explicit key rather than a JWKS wherever you control
+1. Verify against an explicit key instead of a JWKS wherever you control
    both ends. `keys: publicKey` has no ambiguity to resolve.
 2. Rotate across algorithms. Publish the outgoing `EdDSA` key and the
    incoming `ES256` key together, allow both during the overlap, then drop
@@ -571,127 +299,37 @@ Since you cannot issue with a `kid`, plan around it. In order of preference:
    with the old key fail for one token lifetime. At 10-minute access tokens
    that window is small.
 
-Verifying other issuers' tokens is unaffected. Lacewing reads and validates
-`kid` normally, so a JWKS from Auth0, Okta or Cognito works as expected. The
-constraint applies only to tokens Lacewing signs.
-
----
+The constraint applies only to tokens Lacewing signs. Lacewing reads and
+matches `kid` on other issuers' tokens, so an issuer that sets `kid` can
+rotate normally. We haven't tested against Auth0, Okta or Cognito
+specifically.
 
 ## 11. Handling errors
 
-Every refusal is a `JWTError`: one class, with a `code` from the
-`JWTErrorCode` union saying why, and a message that starts with `lacewing: `.
-The claim codes also set `.claim` to the claim's name. Messages are generic and
-never echo token content, so they cannot become an oracle or a log-injection
-vector.
-
-An error that is not a `JWTError` did not come from Lacewing's checks: a
-`fetch` you passed to `createRemoteJWKSet` that throws, for one, reaches you as
-itself.
-
-```ts
-import { JWTError } from "lacewing";
-
-try {
-  const { payload } = await jwtVerify(token, profile);
-  return handle(payload);
-} catch (error) {
-  if (!(error instanceof JWTError)) throw error; // not a token problem; don't swallow it
-  if (error.code === "JWT_EXPIRED") return res.status(401).json({ error: "token_expired" });
-  logger.warn({ code: error.code, claim: error.claim }, "token rejected");
-  return res.status(401).json({ error: "invalid_token" });
-}
-```
-
-The codes:
-
-| `code` | Means |
-|---|---|
-| `JWT_INVALID` | Malformed, or the signature doesn't check out |
-| `JWT_EXPIRED` | Past `exp`, or older than `maxTokenAge` |
-| `JWT_CLAIM_VALIDATION_FAILED` | A claim is present but wrong (`.claim` names it) |
-| `MISSING_CLAIM` | A required claim isn't there (`.claim` names it) |
-| `ALGORITHM_NOT_ALLOWED` | `alg` isn't one Lacewing speaks, or isn't in your allowlist |
-| `JWT_REVOKED` | The store says no |
-| `REVOCATION_CHECK_FAILED` | The store broke; failing closed |
-| `JWKS_FETCH_FAILED` | Couldn't fetch the JWKS with the global `fetch` |
-| `JWKS_NO_MATCHING_KEY` | No key matched, or several did |
-| `KEY_IMPORT_FAILED` | Key material couldn't be imported or generated |
-| `KEY_TYPE_MISMATCH` | The key doesn't fit the algorithm |
-| `KEY_EXPORT_FAILED` | The key couldn't be exported (not extractable, or a secret as PEM) |
-| `ENTROPY_CHECK_FAILED` | HMAC secret is too weak; a startup problem |
-| `PAYLOAD_HYGIENE_VIOLATION` | You're about to sign a secret (`.claim` names where) |
-| `MAX_LIFETIME_EXCEEDED` | `.expiresIn()` is past the lifetime cap |
-| `BEARER_PARSE_FAILED` | The `Authorization` header isn't exactly `Bearer <token>` |
-
-Misconfiguration (a profile with no `typ`, an `http:` JWKS URL, a malformed
-duration, a profile or key that Lacewing didn't build) is a `TypeError` at
-the call that receives it, not a `JWTError`. Lacewing's own refusals of a
-token are `JWTError`s, including when your `unsafeClaimValidators` function
-or your revocation store throws: those are verdicts on the token, so they come
-back as `JWT_CLAIM_VALIDATION_FAILED` and `REVOCATION_CHECK_FAILED` with your
-error as `cause`.
-
-Do not return a distinct HTTP response per code to unauthenticated callers.
-Use `401 invalid_token` for all of them and keep the detail in logs.
-
----
+Every refusal is a `JWTError` with a `code`. Log the code and return
+`401 invalid_token` for all of them; misconfiguration is a `TypeError` at the
+call that receives it. The codes, an example handler and the `onEvent`
+listener for JWKS outages and fail-open revocation are in
+[Errors, events and time](./guides/operations.md).
 
 ## 12. Coming from `jsonwebtoken`
 
-The mapping is mechanical except for two habits.
-
 | `jsonwebtoken` | Lacewing |
-|---|---|
+| --- | --- |
 | `jwt.sign(payload, key, opts)` | `new SignJWT(typ).issuer().audience().expiresIn().sign(key)` |
 | `jwt.verify(token, key, opts)` | `jwtVerify(token, profile)` |
 | `jwt.decode(token)` | `unsafeDecode(token)`, branded untrusted |
 | options per call site | one `defineProfile` shared by every call site |
-| `algorithms: [...]` optional | mandatory, always |
+| `algorithms: [...]` optional | required |
 
-Options move to the profile. Passing verification options at each call site
-is how one endpoint ends up not checking `audience`. Define the profile once
-and import it everywhere.
-
-`typ` is mandatory. `jsonwebtoken` does not make you distinguish token
-kinds, so most codebases have one sort of JWT doing several jobs. Lacewing
-requires the kind to be named, and different kinds refuse each other.
-Existing tokens without a `typ` have to be reissued; no profile accepts an
-absent `typ`.
+Two habits change. Options move to the profile: passing verification options
+at each call site is how one endpoint ends up not checking `audience`. And
+`typ` is required. `jsonwebtoken` does not make you distinguish token kinds,
+so most codebases have one sort of JWT doing several jobs. Existing tokens
+without a `typ` have to be reissued; no profile accepts an absent `typ`.
 
 Migration order:
 
 1. Add Lacewing alongside your existing library; issue new tokens with both.
 2. Move verification to `jwtVerify` with a profile, behind a flag.
-3. Once all live tokens carry `typ`, drop the old path.
-
-Step 3 waits one token lifetime.
-
----
-
-## 13. Adoption checklist
-
-- [ ] `"type": "module"` and Node 24+ in your deploy image
-- [ ] Asymmetric keys (`EdDSA`) unless you deliberately chose otherwise
-- [ ] Private key loaded from your secret manager, never from the repo
-- [ ] One `defineProfile` per token kind, at module scope, exported
-- [ ] `audience` is the specific service, not a wildcard
-- [ ] `maxTokenAge` set to what you accept, not what the issuer claims
-- [ ] Access tokens in minutes; refresh tokens revocable
-- [ ] Browser tokens in `HttpOnly` cookies; grep for `localStorage` to be sure
-- [ ] Node framework? `new Headers(req.headers)` at the edge
-- [ ] A revocation store that survives a restart
-- [ ] A decision on what a store outage should do; the default fails closed
-- [ ] An `onEvent` listener wired to your logs or metrics, so a JWKS outage
-      or a fail-open revocation shows up somewhere
-- [ ] A rotation plan that accounts for the `kid` constraint in
-      [§10](#10-distributing-keys-in-production)
-- [ ] `401 invalid_token` for every rejection; codes go to logs only
-- [ ] CI greps for `unsafe`: every weakening Lacewing allows is spelled with it
-
----
-
-`npm run demo` in the repository runs a live walkthrough where every
-rejection is a real thrown error. For the full API, see the
-[README](./README.md) and the generated
-[TypeDoc](https://github.com/Smiduweorc/lacewing).
+3. Once all live tokens carry `typ` (one token lifetime), drop the old path.
