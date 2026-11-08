@@ -43,7 +43,7 @@ test("[LW-payload.3] the docs state that JWS payloads are readable plaintext", (
 		"the docs must explain that the payload is base64url-encoded plaintext"
 	);
 	assert.ok(
-		readme.includes("never put secrets in it") || readme.includes("do not put secrets in tokens"),
+		readme.includes("don't put secrets in a signed payload"),
 		"the docs must tell the reader not to put secrets in the payload"
 	);
 });
