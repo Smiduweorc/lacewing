@@ -8,7 +8,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { refusal } from "../helpers.js";
+import { refusal, runs } from "../helpers.js";
 import fc from "fast-check";
 import {
 	SignJWT,
@@ -55,7 +55,7 @@ test("[LW-rev.2] revoking unrelated jtis never affects an untouched token", asyn
 			const { payload } = await jwtVerify(token, profileWith(store));
 			assert.equal(payload.jti, jti);
 		}),
-		{ numRuns: 30 }
+		{ numRuns: runs(30) }
 	);
 });
 
@@ -68,6 +68,6 @@ test("[LW-rev.2] revoking a token's own jti always rejects the next verification
 			store.revoke(payload.jti as string, payload.exp);
 			await assert.rejects(jwtVerify(token, profileWith(store)), refusal("JWT_REVOKED"));
 		}),
-		{ numRuns: 15 }
+		{ numRuns: runs(15) }
 	);
 });

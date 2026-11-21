@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { JWTError } from "../../../src/util/errors.js";
-import { refusal } from "../../helpers.js";
+import { refusal, runs } from "../../helpers.js";
 import { Buffer } from "node:buffer";
 import fc from "fast-check";
 import { decodeBase64url, encodeBase64url } from "../../../src/lib/base64url.js";
@@ -66,7 +66,7 @@ test("[property] encoding matches Buffer's base64url for any bytes", () => {
 		fc.property(fc.uint8Array({ maxLength: 300 }), (bytes) => {
 			assert.equal(encodeBase64url(bytes), Buffer.from(bytes).toString("base64url"));
 		}),
-		{ numRuns: 2000 }
+		{ numRuns: runs(2000) }
 	);
 });
 
@@ -75,7 +75,7 @@ test("[property] any bytes round-trip to themselves", () => {
 		fc.property(fc.uint8Array({ maxLength: 300 }), (bytes) => {
 			assert.deepEqual(decodeBase64url(encodeBase64url(bytes)), bytes);
 		}),
-		{ numRuns: 2000 }
+		{ numRuns: runs(2000) }
 	);
 });
 
@@ -98,7 +98,7 @@ test("[property] accepts and refuses exactly what the Buffer decoder did", () =>
 		fc.property(fc.oneof(nearlyBase64url, fc.string({ maxLength: 40 })), (encoded) => {
 			assert.deepEqual(portableDecode(encoded), bufferDecode(encoded));
 		}),
-		{ numRuns: 20000 }
+		{ numRuns: runs(20000) }
 	);
 });
 

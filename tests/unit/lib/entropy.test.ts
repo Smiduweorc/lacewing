@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { refusal } from "../../helpers.js";
+import { refusal, runs } from "../../helpers.js";
 import fc from "fast-check";
 import { isPasswordLike, validateHMACSecret } from "../../../src/lib/entropy.js";
 import { resolveAlgorithm } from "../../../src/lib/algorithms.js";
@@ -112,7 +112,7 @@ test("random hex and base64 keys are never flagged, over many samples", () => {
 				assert.doesNotThrow(() => validateHMACSecret(encoder.encode(encoded), resolveAlgorithm("HS256")), encoded);
 			}
 		}),
-		{ numRuns: 20000, seed: 8725 }
+		{ numRuns: runs(20000), seed: 8725 }
 	);
 });
 

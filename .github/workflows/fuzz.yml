@@ -1,0 +1,32 @@
+name: Fuzz
+
+# Continuous fuzzing: the same fast-check properties CI runs on every push,
+# run nightly with FC_SCALE times as many generated inputs. fast-check prints
+# the seed and shrunk counterexample of any failure, which reproduces it.
+on:
+  schedule:
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+    inputs:
+      scale:
+        description: Multiplier on every property's run count
+        default: '200'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Property fuzz (nightly)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm run test:fuzz
+        env:
+          FC_SCALE: ${{ inputs.scale || '200' }}

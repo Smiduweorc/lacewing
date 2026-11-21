@@ -9,6 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
+import { runs } from "../helpers.js";
 import { jwtDecrypt, defineDecryptionProfile, generateDirectKey, JWTError } from "../../index.js";
 
 const profile = defineDecryptionProfile({
@@ -29,7 +30,7 @@ test("arbitrary strings never decrypt - they reject with a typed error", async (
 				return true;
 			});
 		}),
-		{ numRuns: 200 }
+		{ numRuns: runs(200) }
 	);
 });
 
@@ -42,7 +43,7 @@ test("dotted five-segment garbage (right shape, wrong content) still rejects typ
 				return true;
 			});
 		}),
-		{ numRuns: 200 }
+		{ numRuns: runs(200) }
 	);
 });
 
@@ -55,7 +56,7 @@ test("three-segment input (a JWS shape) rejects typed - formats never cross over
 				return true;
 			});
 		}),
-		{ numRuns: 100 }
+		{ numRuns: runs(100) }
 	);
 });
 

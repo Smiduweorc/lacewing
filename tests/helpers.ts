@@ -94,3 +94,13 @@ export function refusal(code: JWTErrorCode): (error: unknown) => true {
 		return true;
 	};
 }
+
+/**
+ * Scales a property test's run count by FC_SCALE (default 1), so CI keeps the
+ * suite fast while the nightly fuzz workflow searches far more inputs with
+ * the same properties.
+ */
+export function runs(base: number): number {
+	const scale = Number(process.env.FC_SCALE ?? "1");
+	return Number.isFinite(scale) && scale > 0 ? Math.ceil(base * scale) : base;
+}

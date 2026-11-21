@@ -39,6 +39,7 @@
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
 		"test": "node --import tsx --test \"tests/**/*.test.ts\"",
+		"test:fuzz": "FC_SCALE=${FC_SCALE:-50} node --import tsx --test \"tests/properties/*.test.ts\" \"tests/compliance/lw-kind.test.ts\" \"tests/security/cookie-flags.test.ts\" \"tests/unit/lib/*.test.ts\"",
 		"test:dist": "npm run build && node --test \"tests/dist/*.test.js\"",
 		"test:tap": "node --import tsx --test --test-reporter=tap \"tests/**/*.test.ts\"",
 		"compliance": "node --import tsx tools/run-compliance.ts",

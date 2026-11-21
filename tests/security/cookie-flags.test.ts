@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
+import { runs } from "../helpers.js";
 import { buildTokenCookie } from "../../index.js";
 
 const skip = process.env.LACEWING_SKIP_SECURITY === "1";
@@ -31,7 +32,7 @@ test("@security every legal option combination still yields HttpOnly; Secure; Sa
 			assert.ok(cookie.includes("Secure"), cookie);
 			assert.match(cookie, /SameSite=(Lax|Strict)/);
 		}),
-		{ numRuns: 50 }
+		{ numRuns: runs(50) }
 	);
 });
 

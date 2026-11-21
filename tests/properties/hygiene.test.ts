@@ -10,7 +10,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { refusal } from "../helpers.js";
+import { refusal, runs } from "../helpers.js";
 import fc from "fast-check";
 import { scanPayloadForSensitiveData } from "../../src/lib/payload_hygiene.js";
 
@@ -34,7 +34,7 @@ test("[LW-payload.1] a payload built only from safe names is always accepted", (
 		fc.property(fc.dictionary(safeName, safeTree, { minKeys: 1, maxKeys: 5 }), (payload) => {
 			assert.doesNotThrow(() => scanPayloadForSensitiveData(payload));
 		}),
-		{ numRuns: 60 }
+		{ numRuns: runs(60) }
 	);
 });
 
@@ -46,6 +46,6 @@ test("[LW-payload.1] a sensitive name at any depth is caught - no nesting blind 
 			for (let i = 0; i < depth; i++) value = { [`wrap_${i}`]: value, sibling: filler };
 			assert.throws(() => scanPayloadForSensitiveData({ data: value }), refusal("PAYLOAD_HYGIENE_VIOLATION"));
 		}),
-		{ numRuns: 60 }
+		{ numRuns: runs(60) }
 	);
 });

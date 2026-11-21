@@ -9,6 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
+import { runs } from "../helpers.js";
 import {
 	SignJWT,
 	jwtVerify,
@@ -59,7 +60,7 @@ test("[8725-3.3.1] flipping any single character of a valid token causes a typed
 				});
 			}
 		),
-		{ numRuns: 80 }
+		{ numRuns: runs(80) }
 	);
 });
 

@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
+import { runs } from "../helpers.js";
 import { jwtVerify, defineProfile, generateSecret, JWTError } from "../../index.js";
 
 const profile = defineProfile({
@@ -27,7 +28,7 @@ test("arbitrary strings never verify - they reject with a typed error", async ()
 				return true;
 			});
 		}),
-		{ numRuns: 200 }
+		{ numRuns: runs(200) }
 	);
 });
 
@@ -40,7 +41,7 @@ test("dotted three-segment garbage (right shape, wrong content) still rejects ty
 				return true;
 			});
 		}),
-		{ numRuns: 200 }
+		{ numRuns: runs(200) }
 	);
 });
 

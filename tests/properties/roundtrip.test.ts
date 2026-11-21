@@ -8,6 +8,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fc from "fast-check";
+import { runs } from "../helpers.js";
 import {
 	SignJWT,
 	jwtVerify,
@@ -68,7 +69,7 @@ for (const { alg, sign, verify } of cases) {
 					assert.deepEqual(payload[name], value, `claim ${name} survived`);
 				}
 			}),
-			{ numRuns: 30 }
+			{ numRuns: runs(30) }
 		);
 	});
 }
