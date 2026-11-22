@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.2] - 2026-11-22
+
+### Bug Fixes
+
+- Test that checked docs
+- Force 2fa for staged publishing
+
+### Miscellaneous Tasks
+
+- Updated deps
+- Add new publish action
+
+### Testing
+
+- Scale property runs for a nightly fuzz workflow
+
 ## [3.0.1] - 2026-11-08
 
 ### Documentation
