@@ -63,4 +63,4 @@ git tag -a "$tag" -m "Release $tag" -m "$changelog"
 
 echo "Done!"
 echo "Now push the commit and tag: git push && git push --tags"
-echo "Then publish: gh workflow run publish.yml -f tag=$tag"
+echo "Then stage it: gh workflow run publish.yml -f tag=$tag, and approve on npmjs.com with 2FA"

@@ -1,11 +1,12 @@
 name: Publish
 
-# Publishes a tag cut by release.sh to npm. Manual only: run it from the
+# Stages a tag cut by release.sh on npm; it goes live once approved with
+# 2FA. Manual only: run it from the
 # Actions tab (or `gh workflow run publish.yml -f tag=vX.Y.Z`) after
 # `git push && git push --tags`.
 #
 # Auth is npm trusted publishing (OIDC), so there is no NPM_TOKEN secret.
-# Provenance is attached automatically.
+# Approve on npmjs.com or with `npm stage list` + `npm stage approve <id>`.
 
 on:
   workflow_dispatch:
@@ -77,13 +78,13 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Prereleases (v1.2.0-rc.1) go to "next" so `npm i <pkg>` never picks them.
-      - name: Publish
+      # Prereleases (v1.2.0-rc.1) are staged under "next" so `npm i <pkg>` never picks them.
+      - name: Stage publish (approve with 2FA on npm)
         env:
           TAG: ${{ inputs.tag }}
         run: |
           if [[ "$TAG" == *-* ]]; then
-            npm publish --tag next
+            npm stage publish --provenance --tag next
           else
-            npm publish
+            npm stage publish --provenance
           fi
