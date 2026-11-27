@@ -1,83 +1,84 @@
 {
-	"name": "lacewing",
-	"version": "3.0.2",
-	"description": "An opinionated JWT library that makes RFC 8725 (JWT Best Current Practices) the default behavior, not an optional configuration.",
-	"type": "module",
-	"engines": {
-		"node": ">=24"
-	},
-	"sideEffects": false,
-	"files": [
-		"dist/",
-		"ADVISORIES.md",
-		"NOTICE.md",
-		"SECURITY.md"
-	],
-	"main": "dist/index.js",
-	"types": "dist/types/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/types/index.d.ts",
-			"default": "./dist/index.js"
-		},
-		"./extension": {
-			"types": "./dist/types/src/extension.d.ts",
-			"default": "./dist/src/extension.js"
-		},
-		"./legacy/rs256": {
-			"types": "./dist/types/src/legacy/rs256.d.ts",
-			"default": "./dist/src/legacy/rs256.js"
-		},
-		"./legacy/rsa": {
-			"types": "./dist/types/src/legacy/rsa.d.ts",
-			"default": "./dist/src/legacy/rsa.js"
-		}
-	},
-	"scripts": {
-		"build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc",
-		"typecheck": "tsc --noEmit && tsc --noEmit -p tests/tsconfig.json",
-		"lint": "eslint .",
-		"lint:fix": "eslint . --fix",
-		"test": "node --import tsx --test \"tests/**/*.test.ts\"",
-		"test:fuzz": "FC_SCALE=${FC_SCALE:-50} node --import tsx --test \"tests/properties/*.test.ts\" \"tests/compliance/lw-kind.test.ts\" \"tests/security/cookie-flags.test.ts\" \"tests/unit/lib/*.test.ts\"",
-		"test:dist": "npm run build && node --test \"tests/dist/*.test.js\"",
-		"test:tap": "node --import tsx --test --test-reporter=tap \"tests/**/*.test.ts\"",
-		"compliance": "node --import tsx tools/run-compliance.ts",
-		"demo": "node --import tsx examples/demo.ts",
-		"docs": "typedoc",
-		"changelog": "git-cliff -o CHANGELOG.md",
-		"prepare": "lefthook install",
-		"prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
-	},
-	"keywords": [
-		"jwt",
-		"jose",
-		"rfc8725",
-		"security",
-		"jwks",
-		"typescript"
-	],
-	"author": "Smiduweorc",
-	"license": "MIT",
-	"repository": {
-		"type": "git",
-		"url": "git+https://github.com/Smiduweorc/lacewing.git"
-	},
-	"devDependencies": {
-		"@commitlint/cli": "^21.2.4",
-		"@commitlint/config-conventional": "^21.2.4",
-		"@eslint/js": "^10.0.1",
-		"@types/node": "^26.6.6",
-		"eslint": "^10.14.0",
-		"fast-check": "^4.10.2",
-		"git-cliff": "^2.14.2",
-		"lefthook": "^2.2.2",
-		"tsx": "^4.23.15",
-		"typedoc": "^0.28.20",
-		"typescript": "^6.0.3",
-		"typescript-eslint": "^8.72.1"
-	},
-	"dependencies": {
-		"jose": "^6.2.15"
-	}
+  "name": "lacewing",
+  "version": "3.0.3",
+  "description": "An opinionated JWT library that makes RFC 8725 (JWT Best Current Practices) the default behavior, not an optional configuration.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist/",
+    "ADVISORIES.md",
+    "NOTICE.md",
+    "SECURITY.md"
+  ],
+  "main": "dist/index.js",
+  "types": "dist/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./extension": {
+      "types": "./dist/types/src/extension.d.ts",
+      "default": "./dist/src/extension.js"
+    },
+    "./legacy/rs256": {
+      "types": "./dist/types/src/legacy/rs256.d.ts",
+      "default": "./dist/src/legacy/rs256.js"
+    },
+    "./legacy/rsa": {
+      "types": "./dist/types/src/legacy/rsa.d.ts",
+      "default": "./dist/src/legacy/rsa.js"
+    }
+  },
+  "scripts": {
+    "build": "node -e \"fs.rmSync('dist', { recursive: true, force: true })\" && tsc",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests/tsconfig.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "node --import tsx --test \"tests/**/*.test.ts\"",
+    "test:fuzz": "FC_SCALE=${FC_SCALE:-50} node --import tsx --test \"tests/properties/*.test.ts\" \"tests/compliance/lw-kind.test.ts\" \"tests/security/cookie-flags.test.ts\" \"tests/unit/lib/*.test.ts\"",
+    "test:dist": "npm run build && node --test \"tests/dist/*.test.js\"",
+    "test:tap": "node --import tsx --test --test-reporter=tap \"tests/**/*.test.ts\"",
+    "compliance": "node --import tsx tools/run-compliance.ts",
+    "demo": "node --import tsx examples/demo.ts",
+    "docs": "typedoc",
+    "changelog": "git-cliff -o CHANGELOG.md",
+    "prepare": "lefthook install",
+    "prepublishOnly": "npm run typecheck && npm run lint && npm test && npm run build"
+  },
+  "keywords": [
+    "jwt",
+    "jose",
+    "rfc8725",
+    "security",
+    "jwks",
+    "typescript",
+    "smiduweorc"
+  ],
+  "author": "Smiduweorc",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Smiduweorc/lacewing.git"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.6",
+    "eslint": "^10.14.0",
+    "fast-check": "^4.10.2",
+    "git-cliff": "^2.14.2",
+    "lefthook": "^2.2.2",
+    "tsx": "^4.23.15",
+    "typedoc": "^0.28.20",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.1"
+  },
+  "dependencies": {
+    "jose": "^6.2.15"
+  }
 }
